@@ -38,6 +38,7 @@ STATE_HOME = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/st
 HISTORY_FILE = os.path.join(STATE_HOME, "ytk", "history.json")
 WATCH_LATER = os.path.join(STATE_HOME, "mpv", "watch_later")   # donde mpv guarda la posición al salir
 HISTORY_MAX = 200
+MPV_TRIES = 3
 DOWNLOADS = os.path.expanduser(os.environ.get("YTK_DOWNLOADS") or "~/Videos/ytk")
 LOCAL_NAME = re.compile(r"\[([A-Za-z0-9_-]{6,64})\]\.(?!part$|ytdl$|temp\.)[A-Za-z0-9]{2,5}$")
 CELL_W = 34          # ancho objetivo de cada celda, en columnas
@@ -472,6 +473,16 @@ class App:
 
     def drain(self):
         alive = [p for p in self.players if p.poll() is None]
+        for p in list(self.players):
+            cmd, t0, attempt = p.ytk
+            # código 2 = mpv no pudo abrir el video. YouTube firma el enlace con tu IP y con datos móviles
+            # la IP cambia entre pedidos (error 403), así que se reintenta con un enlace nuevo.
+            if p.returncode == 2 and attempt < MPV_TRIES and time.monotonic() - t0 < 120:
+                self.spawn(cmd, attempt + 1)
+                alive.append(self.players[-1])
+                self.status = f"mpv no pudo abrir el video; reintentando ({attempt + 1}/{MPV_TRIES})…"
+            elif p.returncode == 2 and attempt >= MPV_TRIES:
+                self.status = "✘ mpv no pudo abrir el video tras 3 intentos (mira ~/.cache/ytk/mpv.log)"
         if len(alive) != len(self.players):
             self.dirty = True              # un mpv terminó: puede haber guardado una posición nueva
         self.players = alive
@@ -651,14 +662,18 @@ class App:
             return
         os.makedirs(CACHE, exist_ok=True)
         os.makedirs(WATCH_LATER, exist_ok=True)
-        log = open(os.path.join(CACHE, "mpv.log"), "ab")
-        self.players.append(subprocess.Popen(
-            ["mpv", "--force-window=immediate", "--ytdl-format=" + ytdl_format(),
-             "--save-position-on-quit", "--resume-playback=yes", "--watch-later-directory=" + WATCH_LATER,
-             *(["--title=" + title] if title else []), *shlex.split(os.environ.get("YTK_MPV_ARGS", "")), "--", url],
-            stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True))
-        log.close()
+        cmd = ["mpv", "--force-window=immediate", "--ytdl-format=" + ytdl_format(),
+               "--save-position-on-quit", "--resume-playback=yes", "--watch-later-directory=" + WATCH_LATER,
+               *(["--title=" + title] if title else []), *shlex.split(os.environ.get("YTK_MPV_ARGS", "")), "--", url]
+        self.spawn(cmd, 1)
         self.status = clean(f"▶ {label}{title or ''}")
+
+    def spawn(self, cmd, attempt):
+        log = open(os.path.join(CACHE, "mpv.log"), "ab")
+        proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
+        log.close()
+        proc.ytk = (cmd, time.monotonic(), attempt)
+        self.players.append(proc)
 
     def play(self):
         if not self.items:
