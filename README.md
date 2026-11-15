@@ -10,6 +10,18 @@ ytk                      # abre y pulsa / para buscar
 ytk big buck bunny       # busca directo
 ```
 
+**Tecla líder (como LazyVim):** `espacio` abre un menú que muestra las opciones, y cada letra es una acción:
+
+| Teclas | Acción |
+|---|---|
+| `espacio f` | buscar |
+| `espacio m` → `m` / `v` / `l` | modo de búsqueda: mixto, solo videos, solo listas (repite la búsqueda actual) |
+| `espacio o` | abrir una lista, o el Mix de un video |
+| `espacio p` | reproducir todo lo que estás viendo (lista o mix) |
+| `espacio b` / `n` / `q` | volver / más resultados / salir |
+
+`Esc` cancela el menú y `Backspace` sube un nivel. Los atajos directos de abajo siguen funcionando.
+
 Teclas: flechas o `h j k l` mover · `Enter` reproducir (una lista se reproduce completa) · `o` abrir una lista, o el
 **Mix** que YouTube genera a partir de un video · `P` reproducir de corrido lo que estás viendo (lista o mix) ·
 `Tab` cambia el modo de búsqueda · `b` volver · `/` buscar · `n` más resultados · `g`/`G` inicio/fin · `q` salir.

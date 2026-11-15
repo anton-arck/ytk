@@ -7,6 +7,7 @@ Opcional: Pillow (si falta, las miniaturas se convierten con ffmpeg).
 
 Uso: ytk [BÚSQUEDA...]
 Variables: YTK_HEIGHT (calidad máxima, 720 por defecto), YTK_MPV_ARGS (opciones extra para mpv).
+Tecla líder: espacio abre un menú (f buscar, m modo, o abrir, p reproducir todo, b volver, n más, q salir).
 Teclas: flechas o h j k l mover · Enter reproducir (listas completas) · o abrir una lista o el Mix de un video · P reproducir todo lo que ves · Tab cambia el modo
 (mixto, videos, listas) · b volver · / buscar · n más resultados · q salir
 """
@@ -104,6 +105,20 @@ def clean(s):
 
 
 VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{6,64}$")   # ids de video (11) y de lista (PL..., hasta ~40)
+# Menú de la tecla líder (espacio), como which-key de LazyVim: tecla -> (texto, acción | submenú)
+MENU = {
+    "f": ("buscar", "search"),
+    "m": ("modo de búsqueda…", {
+        "m": ("mixto: videos y listas", "mode:mixto"),
+        "v": ("solo videos", "mode:videos"),
+        "l": ("solo listas", "mode:listas"),
+    }),
+    "o": ("abrir lista / mix", "open"),
+    "p": ("reproducir todo", "play_all"),
+    "b": ("volver", "back"),
+    "n": ("más resultados", "more"),
+    "q": ("salir", "quit"),
+}
 LIST_PREFIX = ("PL", "RD", "OL", "UU", "LL", "FL")
 THUMB_HOSTS = {"i.ytimg.com", "i9.ytimg.com", "yt3.ggpht.com"}
 MODES = ["mixto", "videos", "listas"]
@@ -322,6 +337,7 @@ class App:
         self.count = 0
         self.exhausted = False
         self.search_mode = MODES[0]
+        self.leader = None         # None = normal; lista = ruta abierta en el menú de la tecla líder
         self.stack = []            # vistas anteriores, para volver con b
         self.players = []          # procesos mpv lanzados (se recogen al terminar para no dejar zombis)
         self.gen = 0
@@ -476,8 +492,21 @@ class App:
         if self.mode == "prompt":
             out.append(f"\x1b[{rows};1H\x1b[0m/ {self.prompt}\x1b[K\x1b[?25h")
         else:
-            hint = " hjkl mover · Enter reproducir · o abrir lista/mix · P reproducir todo · Tab modo · b volver · / buscar · q salir"
+            hint = " espacio menú · hjkl mover · Enter reproducir · / buscar · Tab modo · q salir"
             out.append(f"\x1b[{rows};1H\x1b[2m{fit(hint, cols)}\x1b[0m\x1b[?25l")
+        if self.leader is not None:
+            node = self.leader_node()
+            col_w = max(24, cols // 3)
+            per_row = max(1, cols // col_w)
+            entries = [f"\x1b[1m{k}\x1b[0m  {txt}" + ("" if isinstance(a, str) else " ›") for k, (txt, a) in node.items()]
+            lines = [entries[i:i + per_row] for i in range(0, len(entries), per_row)]
+            top = rows - len(lines) - 1            # fila del título del panel
+            path = " ".join(["espacio"] + self.leader)
+            out.append(f"\x1b[{top};1H\x1b[0m\x1b[7m{fit(' ' + path + '  ·  Esc cancela', cols)}\x1b[0m")
+            for i, row in enumerate(lines):
+                out.append(f"\x1b[{top + 1 + i};1H\x1b[2K" + "".join(
+                    cell + " " * max(0, col_w - width(re.sub(r"\x1b\[[0-9;]*m", "", cell))) for cell in row))
+            places = [(y, x, img) for (y, x, img) in places if y + img_r - 1 < top]
         for y, x, img in places:
             out.append(f"\x1b[{y};{x}H")
             sys.stdout.write("".join(out))
@@ -549,13 +578,40 @@ class App:
         self.source, self.count, self.exhausted = v["source"], v["count"], v["exhausted"]
         self.status = self.summary()
 
-    def cycle_mode(self):
-        self.search_mode = MODES[(MODES.index(self.search_mode) + 1) % len(MODES)]
+    def set_mode(self, mode):
+        self.search_mode = mode
         src = self.source
         if src and src["kind"] == "search":
-            self.start_load({"kind": "search", "q": src["q"], "mode": self.search_mode}, PAGE)
+            self.start_load({"kind": "search", "q": src["q"], "mode": mode}, PAGE)
         else:
-            self.status = f"Modo {self.search_mode}"
+            self.status = f"Modo {mode}"
+
+    def cycle_mode(self):
+        self.set_mode(MODES[(MODES.index(self.search_mode) + 1) % len(MODES)])
+
+    def leader_node(self):
+        node = MENU
+        for k in self.leader or []:
+            node = node[k][1]
+        return node
+
+    def run_action(self, action):
+        """Ejecuta una acción del menú líder. Devuelve False para salir."""
+        if action == "search":
+            self.mode, self.prompt = "prompt", ""
+        elif action.startswith("mode:"):
+            self.set_mode(action[5:])
+        elif action == "open":
+            self.open_list()
+        elif action == "play_all":
+            self.play_all()
+        elif action == "back":
+            self.back()
+        elif action == "more":
+            self.more()
+        elif action == "quit":
+            return False
+        return True
 
     def handle(self, data):
         """Devuelve False para salir."""
@@ -576,8 +632,27 @@ class App:
                 elif isinstance(t, tuple):
                     self.prompt += t[1]
                 continue
+            if self.leader is not None:
+                if t == "esc":
+                    self.leader = None
+                elif t == "bs":
+                    self.leader = self.leader[:-1] if self.leader else None
+                elif isinstance(t, tuple):
+                    entry = self.leader_node().get(t[1])
+                    if entry is None:
+                        self.leader = None
+                    elif isinstance(entry[1], dict):
+                        self.leader.append(t[1])
+                    else:
+                        self.leader = None
+                        if not self.run_action(entry[1]):
+                            return False
+                continue
             _, _, ncols, _, _, _, _, vis = self.layout
             key = t[1] if isinstance(t, tuple) else t
+            if key == " ":
+                self.leader = []
+                continue
             if key == "q":
                 return False
             elif key in ("left", "h"):
