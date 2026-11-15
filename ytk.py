@@ -94,6 +94,16 @@ def wrap2(s, w):
     return fit(first, w), fit(rest, w)
 
 
+def clean(s):
+    """Quita de un texto externo todo carácter de control o de formato (Cc, Cf...): evita inyectar
+    secuencias de escape en la terminal desde títulos, canales o mensajes de error."""
+    s = "".join(" " if c in "\t\r\n" else c for c in str(s or ""))
+    return "".join(c for c in s if not unicodedata.category(c).startswith("C")).strip()
+
+
+VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{6,20}$")
+
+
 def human(n):
     if n is None:
         return ""
@@ -193,18 +203,20 @@ def _search(query, count):
             d = json.loads(line)
         except ValueError:
             continue
-        if not d.get("id"):
+        vid = str(d.get("id") or "")
+        if not VIDEO_ID.match(vid):      # el id se usa en rutas de la caché: solo caracteres seguros
             continue
+        views = d.get("view_count")
         items.append({
-            "id": d["id"],
-            "title": d.get("title") or "(sin título)",
-            "channel": d.get("channel") or d.get("uploader") or "",
-            "duration": d.get("duration_string") or ("EN VIVO" if d.get("live_status") == "is_live" else ""),
-            "views": d.get("view_count"),
-            "url": d.get("url") or f"https://www.youtube.com/watch?v={d['id']}",
+            "id": vid,
+            "title": clean(d.get("title")) or "(sin título)",
+            "channel": clean(d.get("channel") or d.get("uploader")),
+            "duration": clean(d.get("duration_string") or ("EN VIVO" if d.get("live_status") == "is_live" else "")),
+            "views": views if isinstance(views, (int, float)) else None,
+            "url": f"https://www.youtube.com/watch?v={vid}",   # siempre construida aquí, nunca la del JSON
         })
     if not items and p.returncode != 0:
-        raise RuntimeError((p.stderr.strip().splitlines() or ["yt-dlp falló"])[-1])
+        raise RuntimeError(clean((p.stderr.strip().splitlines() or ["yt-dlp falló"])[-1]))
     return items
 
 
@@ -297,9 +309,9 @@ class App:
                     if it["id"] not in self.thumb:
                         self.thumb[it["id"]] = "queued"
                         self.thumbq.put(it["id"])
-                self.status = f"{len(self.items)} resultados para “{self.query}”" if self.items else "Sin resultados"
+                self.status = f"{len(self.items)} resultados para “{clean(self.query)}”" if self.items else "Sin resultados"
             elif ev[0] == "error" and ev[1] == self.gen:
-                self.status = "Error: " + ev[2]
+                self.status = "Error: " + clean(ev[2])
             elif ev[0] == "thumb":
                 vid, ok = ev[1], ev[2]
                 if not ok:
@@ -393,9 +405,9 @@ class App:
         log = open(os.path.join(CACHE, "mpv.log"), "ab")
         subprocess.Popen(
             ["mpv", "--force-window=immediate", "--ytdl-format=" + ytdl_format(),
-             "--title=" + it["title"], *shlex.split(os.environ.get("YTK_MPV_ARGS", "")), it["url"]],
+             "--title=" + it["title"], *shlex.split(os.environ.get("YTK_MPV_ARGS", "")), "--", it["url"]],
             stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
-        self.status = f"▶ {it['title']}"
+        self.status = f"▶ {clean(it['title'])}"
 
     def move(self, delta, absolute=False):
         n = len(self.items)
