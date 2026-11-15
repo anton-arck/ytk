@@ -35,3 +35,9 @@ Variables: `YTK_HEIGHT` (calidad máxima, 720 por defecto) y `YTK_MPV_ARGS` (opc
 Las miniaturas se guardan en `~/.cache/ytk`; el registro de mpv, en `~/.cache/ytk/mpv.log`.
 
 `probe/` tiene dos pruebas pequeñas del protocolo de imágenes de kitty.
+
+## Continuar viendo
+
+- Al salir de mpv con `q` se guarda el segundo donde ibas (`--save-position-on-quit`, carpeta `~/.local/state/mpv/watch_later`); al volver a abrir el video continúa ahí.
+- En la cuadrícula, los videos con posición guardada muestran `▶ 12:30/45:10` y una barra de progreso.
+- `H` o `espacio h` abre el historial (lo último que reproduciste, hasta 200), guardado en `~/.local/state/ytk/history.json`.

@@ -13,6 +13,7 @@ Teclas: flechas o h j k l mover · Enter reproducir (listas completas) · o abri
 """
 import base64
 import fcntl
+import hashlib
 import json
 import os
 import queue
@@ -26,12 +27,17 @@ import subprocess
 import sys
 import termios
 import threading
+import time
 import tty
 import unicodedata
 import urllib.parse
 import urllib.request
 
 CACHE = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "ytk")
+STATE_HOME = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
+HISTORY_FILE = os.path.join(STATE_HOME, "ytk", "history.json")
+WATCH_LATER = os.path.join(STATE_HOME, "mpv", "watch_later")   # donde mpv guarda la posición al salir
+HISTORY_MAX = 200
 CELL_W = 34          # ancho objetivo de cada celda, en columnas
 PAGE = 30            # resultados por búsqueda (y por cada "más")
 THUMB_WORKERS = 6
@@ -115,6 +121,7 @@ MENU = {
     }),
     "o": ("abrir lista / mix", "open"),
     "p": ("reproducir todo", "play_all"),
+    "h": ("historial / continuar viendo", "history"),
     "b": ("volver", "back"),
     "n": ("más resultados", "more"),
     "q": ("salir", "quit"),
@@ -240,6 +247,7 @@ def _flat(target, end=None):
             "channel": clean(d.get("channel") or d.get("uploader")),
             "duration": clean(d.get("duration_string") or ("EN VIVO" if d.get("live_status") == "is_live" else "")),
             "views": views if isinstance(views, (int, float)) else None,
+            "secs": d.get("duration") if isinstance(d.get("duration"), (int, float)) else None,
             "thumb": thumb if is_list else None,     # los videos usan siempre la miniatura por id
             # la URL se construye aquí a partir del id, nunca se usa la del JSON
             "url": f"https://www.youtube.com/playlist?list={vid}" if is_list else f"https://www.youtube.com/watch?v={vid}",
@@ -271,6 +279,8 @@ def search_lists(query, count):
 
 def fetch(source, count):
     """Trae los elementos de una fuente: {"kind": "search", "q", "mode"} o {"kind": "playlist", "id"}."""
+    if source["kind"] == "history":
+        return history_load()
     if source["kind"] == "playlist":
         return _flat(f"https://www.youtube.com/playlist?list={source['id']}", end=count)
     if source["kind"] == "mix":      # el "Mix" que genera YouTube a partir de un video (lista RD + id)
@@ -298,6 +308,64 @@ def fetch(source, count):
         if (i + 1) % 4 == 0 and lst:
             out.append(lst.pop(0))
     return out + lst
+
+
+# ---------- historial y posición guardada ----------
+def fmt_time(sec):
+    sec = int(sec)
+    h, m, s = sec // 3600, sec % 3600 // 60, sec % 60
+    return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+
+def resume_pos(url):
+    """Segundos donde mpv guardó la posición de este video (None si no hay). mpv nombra el archivo con el
+    MD5 de la URL en mayúsculas y escribe una línea start=SEGUNDOS."""
+    name = hashlib.md5(url.encode()).hexdigest().upper()
+    try:
+        with open(os.path.join(WATCH_LATER, name), encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                if line.startswith("start="):
+                    pos = float(line[6:])
+                    return pos if pos >= 5 else None
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def history_load():
+    try:
+        with open(HISTORY_FILE, encoding="utf-8") as f:
+            raw = json.load(f)
+    except (OSError, ValueError):
+        return []
+    out = []
+    for e in raw if isinstance(raw, list) else []:     # el archivo es local, pero se valida igual
+        if not isinstance(e, dict) or not VIDEO_ID.match(str(e.get("id", ""))) or e.get("kind") not in ("video", "list"):
+            continue
+        vid, is_list = e["id"], e["kind"] == "list"
+        out.append({
+            "id": vid, "kind": e["kind"], "title": clean(e.get("title")) or "(sin título)",
+            "channel": clean(e.get("channel")), "duration": clean(e.get("duration")),
+            "views": e.get("views") if isinstance(e.get("views"), (int, float)) else None,
+            "secs": e.get("secs") if isinstance(e.get("secs"), (int, float)) else None,
+            "thumb": allowed_thumb(e.get("thumb")) if is_list else None,
+            "url": f"https://www.youtube.com/playlist?list={vid}" if is_list else f"https://www.youtube.com/watch?v={vid}",
+        })
+    return out
+
+
+def history_add(item):
+    entries = [e for e in history_load() if e["id"] != item["id"]]
+    keep = {k: item.get(k) for k in ("id", "kind", "title", "channel", "duration", "views", "secs", "thumb")}
+    entries = ([keep] + entries)[:HISTORY_MAX]
+    try:
+        os.makedirs(os.path.dirname(HISTORY_FILE), exist_ok=True)
+        tmp = HISTORY_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(entries, f, ensure_ascii=False)
+        os.replace(tmp, HISTORY_FILE)
+    except OSError:
+        pass
 
 
 def to_png(jpg_path, png_path):
@@ -371,7 +439,7 @@ class App:
         self.gen += 1
         gen = self.gen
         self.source, self.count = source, count
-        what = {"playlist": f"lista “{source.get('title')}”", "mix": f"mix “{source.get('title')}”"}.get(
+        what = {"history": "historial", "playlist": f"lista “{source.get('title')}”", "mix": f"mix “{source.get('title')}”"}.get(
             source["kind"], f"“{source.get('q')}” ({source.get('mode')})")
         self.status = clean(f"Cargando {what}…")
         self.dirty = True
@@ -384,7 +452,10 @@ class App:
         threading.Thread(target=work, daemon=True).start()
 
     def drain(self):
-        self.players = [p for p in self.players if p.poll() is None]
+        alive = [p for p in self.players if p.poll() is None]
+        if len(alive) != len(self.players):
+            self.dirty = True              # un mpv terminó: puede haber guardado una posición nueva
+        self.players = alive
         while True:
             try:
                 ev = self.events.get_nowait()
@@ -432,6 +503,8 @@ class App:
         if not n:
             return "Sin resultados"
         lists = sum(1 for i in self.items if i["kind"] == "list")
+        if src["kind"] == "history":
+            return f"Historial · {n} (lo último primero)"
         if src["kind"] in ("playlist", "mix"):
             return clean(f"{'Mix' if src['kind'] == 'mix' else 'Lista'} “{src['title']}” · {n} videos")
         extra = f" ({lists} listas)" if lists else ""
@@ -480,8 +553,17 @@ class App:
                     msg = "sin miniatura" if state == "fail" else "cargando…"
                     out.append(f"\x1b[{y0 + img_r // 2};{x0}H\x1b[2m{fit(msg, img_c)}\x1b[0m")
                 t1, t2 = wrap2(it["title"], img_c)
-                parts = ("LISTA", it["channel"]) if it["kind"] == "list" else (it["channel"], it["duration"], human(it["views"]))
+                pos = resume_pos(it["url"]) if it["kind"] == "video" else None
+                if it["kind"] == "list":
+                    parts = ("LISTA", it["channel"])
+                elif pos:
+                    parts = (f"▶ {fmt_time(pos)}/{it['duration'] or '?'}", it["channel"])
+                else:
+                    parts = (it["channel"], it["duration"], human(it["views"]))
                 meta = fit(" · ".join(p for p in parts if p), img_c)
+                if pos and it.get("secs"):
+                    filled = max(1, min(img_c, round(pos / it["secs"] * img_c)))
+                    out.append(f"\x1b[{y0 + img_r + 3};{x0}H\x1b[1m{'━' * filled}\x1b[0m\x1b[2m{'─' * (img_c - filled)}\x1b[0m")
                 on, off = ("\x1b[7;1m", "\x1b[0m") if selected else ("", "")
                 out.append(f"\x1b[{y0 + img_r};{x0}H{on}{t1}{off}")
                 out.append(f"\x1b[{y0 + img_r + 1};{x0}H{on}{t2}{off}")
@@ -537,9 +619,11 @@ class App:
             self.status = "mpv no está instalado"
             return
         os.makedirs(CACHE, exist_ok=True)
+        os.makedirs(WATCH_LATER, exist_ok=True)
         log = open(os.path.join(CACHE, "mpv.log"), "ab")
         self.players.append(subprocess.Popen(
             ["mpv", "--force-window=immediate", "--ytdl-format=" + ytdl_format(),
+             "--save-position-on-quit", "--resume-playback=yes", "--watch-later-directory=" + WATCH_LATER,
              *(["--title=" + title] if title else []), *shlex.split(os.environ.get("YTK_MPV_ARGS", "")), "--", url],
             stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True))
         log.close()
@@ -549,6 +633,7 @@ class App:
         if not self.items:
             return
         it = self.items[self.sel]
+        history_add(it)
         if it["kind"] == "list":
             self.launch(it["url"], label=f"lista {it['title']}")
         else:
@@ -585,6 +670,11 @@ class App:
                                count=self.count, exhausted=self.exhausted))
         self.start_load(src, PAGE)
 
+    def open_history(self):
+        self.stack.append(dict(items=self.items, sel=self.sel, top=self.top, source=self.source,
+                               count=self.count, exhausted=self.exhausted))
+        self.start_load({"kind": "history"}, HISTORY_MAX)
+
     def back(self):
         if not self.stack:
             return
@@ -619,6 +709,8 @@ class App:
             self.set_mode(action[5:])
         elif action == "open":
             self.open_list()
+        elif action == "history":
+            self.open_history()
         elif action == "play_all":
             self.play_all()
         elif action == "back":
@@ -696,6 +788,8 @@ class App:
                 self.play()
             elif key == "o":
                 self.open_list()
+            elif key == "H":
+                self.open_history()
             elif key == "P":
                 self.play_all()
             elif key in ("b", "bs", "esc"):
