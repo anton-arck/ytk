@@ -20,6 +20,9 @@ ytk big buck bunny       # busca directo
 | `espacio p` | reproducir todo lo que estás viendo (lista o mix) |
 | `espacio b` / `n` / `q` | volver / más resultados / salir |
 
+Al buscar (`espacio f` o `/`) aparece un cuadro flotante, como el de LazyVim: escribes, `Enter` busca, `Esc` cancela y
+`Tab` cambia el modo (el cuadro muestra cuál está activo).
+
 `Esc` cancela el menú y `Backspace` sube un nivel. Los atajos directos de abajo siguen funcionando.
 
 Teclas: flechas o `h j k l` mover · `Enter` reproducir (una lista se reproduce completa) · `o` abrir una lista, o el

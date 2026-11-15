@@ -489,11 +489,9 @@ class App:
                 if selected:
                     for k in range(img_r + 3):
                         out.append(f"\x1b[{y0 + k};{x0 - 1}H\x1b[1m▌\x1b[0m")
-        if self.mode == "prompt":
-            out.append(f"\x1b[{rows};1H\x1b[0m/ {self.prompt}\x1b[K\x1b[?25h")
-        else:
-            hint = " espacio menú · hjkl mover · Enter reproducir · / buscar · Tab modo · q salir"
-            out.append(f"\x1b[{rows};1H\x1b[2m{fit(hint, cols)}\x1b[0m\x1b[?25l")
+        hint = (" Enter busca · Esc cancela · Tab cambia el modo" if self.mode == "prompt"
+                else " espacio menú · hjkl mover · Enter reproducir · / buscar · Tab modo · q salir")
+        out.append(f"\x1b[{rows};1H\x1b[2m{fit(hint, cols)}\x1b[0m")
         if self.leader is not None:
             node = self.leader_node()
             col_w = max(24, cols // 3)
@@ -507,11 +505,29 @@ class App:
                 out.append(f"\x1b[{top + 1 + i};1H\x1b[2K" + "".join(
                     cell + " " * max(0, col_w - width(re.sub(r"\x1b\[[0-9;]*m", "", cell))) for cell in row))
             places = [(y, x, img) for (y, x, img) in places if y + img_r - 1 < top]
+        cursor = None
+        if self.mode == "prompt":
+            bw = min(cols - 4, max(46, cols // 2))
+            bx, by = (cols - bw) // 2 + 1, max(2, rows // 3 - 1)
+            inner = bw - 4
+            title = " Buscar en YouTube "
+            sub = f" modo {self.search_mode} · Tab cambia "
+            vis_text = self.prompt
+            while width(vis_text) > inner - 1:          # si es largo, se ve el final
+                vis_text = vis_text[1:]
+            top = "╭─" + title + "─" * max(0, bw - 3 - width(title)) + "╮"
+            bot = "╰─" + sub + "─" * max(0, bw - 3 - width(sub)) + "╯"
+            out.append(f"\x1b[{by};{bx}H\x1b[0;1m{top}")
+            out.append(f"\x1b[{by + 1};{bx}H│ {fit(vis_text, inner)} │")
+            out.append(f"\x1b[{by + 2};{bx}H{bot}\x1b[0m")
+            cursor = (by + 1, bx + 2 + width(vis_text))
+            places = [(y, x, img) for (y, x, img) in places if y + img_r - 1 < by or y > by + 2]
         for y, x, img in places:
             out.append(f"\x1b[{y};{x}H")
             sys.stdout.write("".join(out))
             out = []
             gfx_place(img, img_c, img_r)
+        out.append(f"\x1b[{cursor[0]};{cursor[1]}H\x1b[?25h" if cursor else "\x1b[?25l")
         sys.stdout.write("".join(out))
         sys.stdout.flush()
 
@@ -629,6 +645,8 @@ class App:
                         self.start_load({"kind": "search", "q": q, "mode": self.search_mode}, PAGE)
                 elif t == "bs":
                     self.prompt = self.prompt[:-1]
+                elif t == "tab":
+                    self.search_mode = MODES[(MODES.index(self.search_mode) + 1) % len(MODES)]
                 elif isinstance(t, tuple):
                     self.prompt += t[1]
                 continue
