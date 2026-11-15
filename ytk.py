@@ -38,7 +38,7 @@ STATE_HOME = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/st
 HISTORY_FILE = os.path.join(STATE_HOME, "ytk", "history.json")
 WATCH_LATER = os.path.join(STATE_HOME, "mpv", "watch_later")   # donde mpv guarda la posición al salir
 HISTORY_MAX = 200
-MPV_TRIES = 3
+MPV_TRIES = 5
 DOWNLOADS = os.path.expanduser(os.environ.get("YTK_DOWNLOADS") or "~/Videos/ytk")
 LOCAL_NAME = re.compile(r"\[([A-Za-z0-9_-]{6,64})\]\.(?!part$|ytdl$|temp\.)[A-Za-z0-9]{2,5}$")
 CELL_W = 34          # ancho objetivo de cada celda, en columnas
@@ -482,7 +482,7 @@ class App:
                 alive.append(self.players[-1])
                 self.status = f"mpv no pudo abrir el video; reintentando ({attempt + 1}/{MPV_TRIES})…"
             elif p.returncode == 2 and attempt >= MPV_TRIES:
-                self.status = "✘ mpv no pudo abrir el video tras 3 intentos (mira ~/.cache/ytk/mpv.log)"
+                self.status = f"✘ mpv no pudo abrir el video tras {MPV_TRIES} intentos (mira ~/.cache/ytk/mpv.log)"
         if len(alive) != len(self.players):
             self.dirty = True              # un mpv terminó: puede haber guardado una posición nueva
         self.players = alive
