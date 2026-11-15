@@ -6,8 +6,8 @@ dentro de zellij). Necesita: yt-dlp (búsqueda), mpv (reproducción), kitty (im�
 Opcional: Pillow (si falta, las miniaturas se convierten con ffmpeg).
 
 Uso: ytk [BÚSQUEDA...]
-Variables: YTK_HEIGHT (calidad máxima, 720 por defecto), YTK_MPV_ARGS (opciones extra para mpv).
-Tecla líder: espacio abre un menú (f buscar, m modo, o abrir, p reproducir todo, b volver, n más, q salir).
+Variables: YTK_HEIGHT (calidad máxima, 720 por defecto), YTK_MPV_ARGS (opciones extra para mpv), YTK_DOWNLOADS (carpeta de descargas).
+Tecla líder: espacio abre un menú (f buscar, m modo, o abrir, p reproducir todo, a/d descargar audio/video, h historial, b volver, n más, q salir).
 Teclas: flechas o h j k l mover · Enter reproducir (listas completas) · o abrir una lista o el Mix de un video · P reproducir todo lo que ves · Tab cambia el modo
 (mixto, videos, listas) · b volver · / buscar · n más resultados · q salir
 """
@@ -38,6 +38,8 @@ STATE_HOME = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/st
 HISTORY_FILE = os.path.join(STATE_HOME, "ytk", "history.json")
 WATCH_LATER = os.path.join(STATE_HOME, "mpv", "watch_later")   # donde mpv guarda la posición al salir
 HISTORY_MAX = 200
+DOWNLOADS = os.path.expanduser(os.environ.get("YTK_DOWNLOADS") or "~/Videos/ytk")
+LOCAL_NAME = re.compile(r"\[([A-Za-z0-9_-]{6,64})\]\.(?!part$|ytdl$|temp\.)[A-Za-z0-9]{2,5}$")
 CELL_W = 34          # ancho objetivo de cada celda, en columnas
 PAGE = 30            # resultados por búsqueda (y por cada "más")
 THUMB_WORKERS = 6
@@ -121,6 +123,8 @@ MENU = {
     }),
     "o": ("abrir lista / mix", "open"),
     "p": ("reproducir todo", "play_all"),
+    "a": ("descargar audio", "dl_audio"),
+    "d": ("descargar video", "dl_video"),
     "h": ("historial / continuar viendo", "history"),
     "b": ("volver", "back"),
     "n": ("más resultados", "more"),
@@ -368,6 +372,19 @@ def history_add(item):
         pass
 
 
+def local_files(sub=""):
+    """Archivos descargados en DOWNLOADS[/sub]: id -> ruta. El id va entre corchetes al final del nombre ([id].ext)."""
+    out, base = {}, os.path.join(DOWNLOADS, sub)
+    try:
+        for name in os.listdir(base):
+            m = LOCAL_NAME.search(name)
+            if m and os.path.isfile(os.path.join(base, name)):
+                out[m.group(1)] = os.path.join(base, name)
+    except OSError:
+        pass
+    return out
+
+
 def to_png(jpg_path, png_path):
     try:
         from PIL import Image
@@ -407,6 +424,8 @@ class App:
         self.search_mode = MODES[0]
         self.leader = None         # None = normal; lista = ruta abierta en el menú de la tecla líder
         self.stack = []            # vistas anteriores, para volver con b
+        self.scan_local()          # self.local: id -> archivo (el video gana al audio); self.has_video: ids
+        self.downloads = {}        # id -> (proceso yt-dlp, título, "audio"|"video")
         self.players = []          # procesos mpv lanzados (se recogen al terminar para no dejar zombis)
         self.gen = 0
         self.sel = 0
@@ -456,6 +475,14 @@ class App:
         if len(alive) != len(self.players):
             self.dirty = True              # un mpv terminó: puede haber guardado una posición nueva
         self.players = alive
+        for vid, (proc, title, kind) in list(self.downloads.items()):
+            if proc.poll() is None:
+                continue
+            del self.downloads[vid]
+            self.scan_local()
+            self.dirty = True
+            self.status = clean(f"✔ descargado ({kind}): {title}" if proc.returncode == 0
+                                else f"✘ falló la descarga de {title} (mira ~/.cache/ytk/dl.log)")
         while True:
             try:
                 ev = self.events.get_nowait()
@@ -560,6 +587,10 @@ class App:
                     parts = (f"▶ {fmt_time(pos)}/{it['duration'] or '?'}", it["channel"])
                 else:
                     parts = (it["channel"], it["duration"], human(it["views"]))
+                if it["kind"] == "video" and it["id"] in self.downloads:
+                    parts = ("⏳ descargando",) + tuple(parts)
+                elif it["kind"] == "video" and it["id"] in self.local:
+                    parts = ("⬇",) + tuple(parts)
                 meta = fit(" · ".join(p for p in parts if p), img_c)
                 if pos and it.get("secs"):
                     filled = max(1, min(img_c, round(pos / it["secs"] * img_c)))
@@ -636,8 +667,42 @@ class App:
         history_add(it)
         if it["kind"] == "list":
             self.launch(it["url"], label=f"lista {it['title']}")
+        elif it["id"] in self.local and os.path.isfile(self.local[it["id"]]):
+            self.launch(self.local[it["id"]], title=it["title"], label="(local) ")
         else:
             self.launch(it["url"], title=it["title"])
+
+    def scan_local(self):
+        video = local_files()
+        self.has_video = set(video)
+        self.local = {**local_files("audio"), **video}
+
+    def download(self, kind):
+        if not self.items or self.items[self.sel]["kind"] != "video":
+            self.status = "Elige un video para descargarlo (las listas no se descargan)"
+            return
+        it = self.items[self.sel]
+        if not shutil.which("yt-dlp"):
+            self.status = "yt-dlp no está instalado"
+            return
+        if it["id"] in self.downloads:
+            self.status = "Ya se está descargando"
+            return
+        if it["id"] in (self.has_video if kind == "video" else local_files("audio")):
+            self.status = f"El {kind} ya está descargado (Enter lo reproduce)"
+            return
+        outdir = os.path.join(DOWNLOADS, "audio") if kind == "audio" else DOWNLOADS
+        os.makedirs(outdir, exist_ok=True)
+        os.makedirs(CACHE, exist_ok=True)
+        fmt = ["-x"] if kind == "audio" else ["-f", ytdl_format(), "--merge-output-format", "mkv"]
+        log = open(os.path.join(CACHE, "dl.log"), "ab")
+        proc = subprocess.Popen(
+            ["yt-dlp", "--no-playlist", "--windows-filenames", "--no-part", "-o",
+             os.path.join(outdir, "%(title).120B [%(id)s].%(ext)s"), *fmt, "--", it["url"]],
+            stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
+        log.close()
+        self.downloads[it["id"]] = (proc, it["title"], kind)
+        self.status = clean(f"⏳ descargando {kind} en {outdir}: {it['title']}")
 
     def play_all(self):
         """Reproduce de corrido la lista o el mix que se está viendo."""
@@ -713,6 +778,8 @@ class App:
             self.open_history()
         elif action == "play_all":
             self.play_all()
+        elif action in ("dl_audio", "dl_video"):
+            self.download(action[3:])
         elif action == "back":
             self.back()
         elif action == "more":
