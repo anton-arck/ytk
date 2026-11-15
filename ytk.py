@@ -662,9 +662,12 @@ class App:
             return
         os.makedirs(CACHE, exist_ok=True)
         os.makedirs(WATCH_LATER, exist_ok=True)
-        cmd = ["mpv", "--force-window=immediate", "--ytdl-format=" + ytdl_format(),
+        cmd = ["mpv", "--force-window=immediate", "--fs=no", "--ytdl-format=" + ytdl_format(),
                "--save-position-on-quit", "--resume-playback=yes", "--watch-later-directory=" + WATCH_LATER,
                *(["--title=" + title] if title else []), *shlex.split(os.environ.get("YTK_MPV_ARGS", "")), "--", url]
+        for p in self.players:                 # un solo mpv a la vez: se cierra el anterior (guarda su posición)
+            if p.poll() is None:
+                p.terminate()
         self.spawn(cmd, 1)
         self.status = clean(f"▶ {label}{title or ''}")
 
