@@ -13,7 +13,17 @@ def fetch(source, count):
     if source["kind"] == "playlist":
         return _flat(f"https://www.youtube.com/playlist?list={source['id']}", end=count)
     if source["kind"] == "channel":
-        items = _flat(f"https://www.youtube.com/channel/{source['id']}/{source['tab']}", end=count)
+        def tab_items(tab):
+            return _flat(f"https://www.youtube.com/channel/{source['id']}/{tab}", end=count)
+        try:
+            items = tab_items(source["tab"])
+        except RuntimeError as e:
+            # some channels have no "videos" tab (only playlists) or no "playlists" tab: show the other one
+            if "does not have a" not in str(e):
+                raise
+            other = "playlists" if source["tab"] == "videos" else "videos"
+            items = tab_items(other)             # if this fails too, its error is the one shown
+            source["missing"], source["tab"] = source["tab"], other
         for it in items:     # channel tabs lack the channel name and id (or have generic ones)
             it["channel"], it["channel_id"] = source["title"], source["id"]
         return items

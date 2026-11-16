@@ -47,7 +47,9 @@ class NavigationMixin:
         if src["kind"] in ("playlist", "mix"):
             return clean(t("summary." + src["kind"], title=src["title"], n=n))
         if src["kind"] == "channel":
-            return clean(t("summary.channel", title=src["title"], tab=t("tab." + src["tab"]), n=n))
+            key = "summary.channel_missing" if src.get("missing") else "summary.channel"
+            return clean(t(key, title=src["title"], tab=t("tab." + src["tab"]), n=n,
+                           missing=t("tab." + src.get("missing", "videos"))))
         extra = t("summary.extra_lists", n=lists) if lists else ""
         return clean(t("summary.search", n=n, extra=extra, q=src["q"], mode=t("mode." + src["mode"])))
 
@@ -130,6 +132,8 @@ class NavigationMixin:
     def cycle_mode(self):
         src = self.source
         if src and src["kind"] == "channel":      # inside a channel, Tab toggles between its videos and its playlists
+            if src.get("missing"):                # ...unless the channel only has one of the two tabs
+                return
             tab = "playlists" if src["tab"] == "videos" else "videos"
             self.start_load({**src, "tab": tab}, PAGE)
             return
