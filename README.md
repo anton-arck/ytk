@@ -3,7 +3,40 @@
 Busca videos de YouTube desde la terminal y míralos con mpv. Muestra las miniaturas en una cuadrícula con el
 protocolo gráfico de kitty (también funciona dentro de zellij).
 
-Necesita `yt-dlp`, `mpv` y kitty. Pillow es opcional (si falta, usa `ffmpeg` para convertir las miniaturas).
+## Instalación
+
+**Necesitas** [kitty](https://sw.kovidgoyal.net/kitty/) (o una terminal con su protocolo gráfico), `python3` (3.9 o más),
+[`yt-dlp`](https://github.com/yt-dlp/yt-dlp) y [`mpv`](https://mpv.io/). Opcional: `python-pillow` (si falta, las
+miniaturas se convierten con `ffmpeg`).
+
+```sh
+# Arch / Manjaro / Garuda
+sudo pacman -S yt-dlp mpv kitty python-pillow
+
+# Debian / Ubuntu
+sudo apt install mpv kitty python3-pil ffmpeg && python3 -m pip install --user -U yt-dlp
+
+# Fedora
+sudo dnf install yt-dlp mpv kitty python3-pillow
+```
+
+**Instalar ytk** (no hay nada que compilar): clona el repo y enlaza el lanzador a una carpeta de tu `PATH`.
+
+```sh
+git clone https://github.com/anton-arck/ytk.git ~/.local/share/ytk
+mkdir -p ~/.local/bin && ln -sf ~/.local/share/ytk/bin/ytk ~/.local/bin/ytk
+ytk --version
+```
+
+(Asegúrate de que `~/.local/bin` esté en tu `PATH`.) Para quedarte en una versión concreta:
+`git -C ~/.local/share/ytk checkout v0.2.0`; para actualizar: `git -C ~/.local/share/ytk pull`. También puedes
+descargar el `.zip` de una versión desde *Releases*, descomprimirlo y ejecutar `bin/ytk` desde ahí.
+
+> **Aviso:** ytk depende de `yt-dlp`, que lee YouTube sin API oficial. Cuando YouTube cambia algo puede dejar de
+> funcionar hasta que salga un `yt-dlp` nuevo: actualízalo primero (`yt-dlp -U`, o el gestor de paquetes) antes de
+> reportar un problema.
+
+## Uso
 
 ```
 ytk                      # abre y pulsa / para buscar
