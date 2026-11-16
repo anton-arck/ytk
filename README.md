@@ -5,6 +5,8 @@
 Search YouTube from the terminal and watch with mpv. Thumbnails are shown in a grid using kitty's graphics protocol
 (it also works inside zellij). The interface comes in English and Spanish.
 
+![ytk demo](docs/demo.gif)
+
 ## Language
 
 ytk starts in your system language (`$LANG`). Press `space L` to switch between English and Spanish instantly; the
@@ -36,7 +38,7 @@ ytk --version
 ```
 
 (Make sure `~/.local/bin` is in your `PATH`.) To stay on a specific version:
-`git -C ~/.local/share/ytk checkout v0.3.0`; to update: `git -C ~/.local/share/ytk pull`. You can also download a
+`git -C ~/.local/share/ytk checkout v0.3.1`; to update: `git -C ~/.local/share/ytk pull`. You can also download a
 version's `.zip` from *Releases*, unpack it and run `bin/ytk` from there.
 
 > **Heads up:** ytk relies on `yt-dlp`, which reads YouTube without an official API. When YouTube changes something it
@@ -106,6 +108,10 @@ ytk/
 
 Run it with `bin/ytk` or `python3 -m ytk` from the repo root. `probe/` has two small tests of kitty's image protocol.
 
+`tools/record-demo.sh` records the demo GIF above by itself (sway + kitty + `wf-recorder` + `ffmpeg`): it opens a
+floating kitty window, drives ytk through kitty's remote control and converts the recording to a small GIF. Search
+results change over time, so adjust `-q` (what to search) and `-m` (cursor moves) if the selection does not land on a video.
+
 ## Continue watching
 
 - Quitting mpv with `q` saves where you were (`--save-position-on-quit`, folder `~/.local/state/mpv/watch_later`);
@@ -133,4 +139,4 @@ Run it with `bin/ytk` or `python3 -m ytk` from the repo root. `probe/` has two s
 ## Versions and license
 
 `ytk --version` shows the version. Each version's changes are in `CHANGELOG.md`; every version is a git tag
-(`v0.3.0`…) and a download page under *Releases*. MIT license.
+(`v0.3.1`…) and a download page under *Releases*. MIT license.

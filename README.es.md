@@ -5,6 +5,8 @@
 Busca videos de YouTube desde la terminal y míralos con mpv. Muestra las miniaturas en una cuadrícula con el
 protocolo gráfico de kitty (también funciona dentro de zellij).
 
+![demo de ytk](docs/demo.gif)
+
 ## Idioma
 
 La interfaz está en español e inglés. Al abrir usa el idioma de tu sistema (`$LANG`); `espacio L` lo alterna al instante y
@@ -36,7 +38,7 @@ ytk --version
 ```
 
 (Asegúrate de que `~/.local/bin` esté en tu `PATH`.) Para quedarte en una versión concreta:
-`git -C ~/.local/share/ytk checkout v0.3.0`; para actualizar: `git -C ~/.local/share/ytk pull`. También puedes
+`git -C ~/.local/share/ytk checkout v0.3.1`; para actualizar: `git -C ~/.local/share/ytk pull`. También puedes
 descargar el `.zip` de una versión desde *Releases*, descomprimirlo y ejecutar `bin/ytk` desde ahí.
 
 > **Aviso:** ytk depende de `yt-dlp`, que lee YouTube sin API oficial. Cuando YouTube cambia algo puede dejar de
@@ -103,6 +105,10 @@ ytk/
 
 Se puede lanzar con `bin/ytk` o con `python3 -m ytk` desde la raíz del repo.
 
+`tools/record-demo.sh` graba solo el GIF de arriba (sway + kitty + `wf-recorder` + `ffmpeg`): abre una ventana flotante de
+kitty, maneja ytk con el control remoto de kitty y convierte la grabación en un GIF ligero. Los resultados de búsqueda
+cambian con el tiempo: ajusta `-q` (qué buscar) y `-m` (movimientos del cursor) si la selección no cae en un video.
+
 `probe/` tiene dos pruebas pequeñas del protocolo de imágenes de kitty.
 
 ## Continuar viendo
@@ -128,4 +134,4 @@ Se puede lanzar con `bin/ytk` o con `python3 -m ytk` desde la raíz del repo.
 ## Versiones y licencia
 
 `ytk --version` muestra la versión. Los cambios de cada una están en `CHANGELOG.md`; cada versión es una etiqueta de
-git (`v0.3.0`…) y una página de descarga en *Releases*. Licencia MIT.
+git (`v0.3.1`…) y una página de descarga en *Releases*. Licencia MIT.

@@ -1,7 +1,11 @@
 # Changelog
 
 Versions follow [semantic versioning](https://semver.org/): new features bump the middle number, fixes the last.
-Download a specific version from the Releases page, or `git clone --branch v0.3.0 <repo>`.
+Download a specific version from the Releases page, or `git clone --branch v0.3.1 <repo>`.
+
+## 0.3.1
+- Fix: opening the channel of an item whose author has no "videos" tab (or no "playlists" tab) now shows the other tab, with a note, instead of the raw yt-dlp error.
+- `tools/record-demo.sh` records the README demo GIF automatically.
 
 ## 0.3.0
 - Interface in English and Spanish: starts in the system language (`$LANG`), `space L` switches and remembers the choice, `YTK_LANG` forces one. README in English (`README.md`) with the Spanish version in `README.es.md`.
