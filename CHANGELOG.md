@@ -3,6 +3,9 @@
 Versions follow [semantic versioning](https://semver.org/): new features bump the middle number, fixes the last.
 Download a specific version from the Releases page, or `git clone --branch v0.3.1 <repo>`.
 
+## Unreleased
+- Sharper demo GIF: recorded in 4:4:4 and near-lossless, converted at the window's native size with 256 colors and ordered dithering (`tools/record-demo.sh` gained `-c`, `-k` and `-w 0`).
+
 ## 0.3.1
 - Fix: opening the channel of an item whose author has no "videos" tab (or no "playlists" tab) now shows the other tab, with a note, instead of the raw yt-dlp error.
 - `tools/record-demo.sh` records the README demo GIF automatically.

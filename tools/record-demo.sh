@@ -11,7 +11,9 @@
 # Usage: tools/record-demo.sh [-q "search terms"] [-o output.gif] [-w width_px] [-s speed]
 #   -q  what to search for      (default: "arch linux terminal apps")
 #   -o  output file             (default: docs/demo.gif)
-#   -w  GIF width in pixels     (default: 900)
+#   -w  GIF width in pixels     (default: 0 = the window's own size, no rescaling: sharpest)
+#   -c  GIF palette colors      (default: 256)
+#   -k  keep the raw recording at this path (to try other conversions)
 #   -s  wait multiplier         (default: 1; use 1.5 on a slow network)
 #   -m  cursor moves before the info panel, as keys h/j/k/l   (default: "l l j")
 #       Search results change from day to day: pick moves that land on a VIDEO (not a playlist,
@@ -21,17 +23,21 @@ set -euo pipefail
 QUERY="arch linux terminal apps"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/docs/demo.gif"
-GIF_W=900
+GIF_W=0
+COLORS=256
+KEEP=""
 SPEED=1
 MOVES="l l j"
-while getopts "q:o:w:s:m:h" opt; do
+while getopts "q:o:w:c:k:s:m:h" opt; do
   case $opt in
     q) QUERY=$OPTARG ;;
     o) OUT=$OPTARG ;;
     w) GIF_W=$OPTARG ;;
+    c) COLORS=$OPTARG ;;
+    k) KEEP=$OPTARG ;;
     s) SPEED=$OPTARG ;;
     m) MOVES=$OPTARG ;;
-    *) sed -n '2,20p' "$0"; exit 0 ;;
+    *) sed -n '2,24p' "$0"; exit 0 ;;
   esac
 done
 
@@ -96,7 +102,8 @@ swaymsg seat seat0 hide_cursor 100 >/dev/null 2>&1 || true   # no mouse pointer 
 sleep 1.5
 
 # 3. start recording only that window
-wf-recorder -g "$X,$Y ${W}x${H}" -r 30 -f "$WORK/rec.mp4" >"$WORK/wf.log" 2>&1 &
+# near-lossless and full-color (4:4:4): the default 4:2:0 smears colored text on dark backgrounds
+wf-recorder -g "$X,$Y ${W}x${H}" -r 30 -c libx264 -x yuv444p -p crf=8 -p preset=ultrafast -f "$WORK/rec.mp4" >"$WORK/wf.log" 2>&1 &
 REC_PID=$!
 sleep 1
 
@@ -119,9 +126,12 @@ kill -INT "$REC_PID" 2>/dev/null || true
 wait "$REC_PID" 2>/dev/null || true
 REC_PID=""
 
-# 5. video -> GIF: custom palette, 12 fps, no dithering, only the pixels that change are stored
+# 5. video -> GIF: custom palette, 12 fps; ordered dithering keeps thumbnails from banding and
+#    only the pixels that change between frames are stored (small file)
+[ -n "$KEEP" ] && cp "$WORK/rec.mp4" "$KEEP"
+SCALE=""; [ "$GIF_W" -gt 0 ] && SCALE="scale=${GIF_W}:-1:flags=lanczos,"
 mkdir -p "$(dirname "$OUT")"
 ffmpeg -v error -y -ss 1 -i "$WORK/rec.mp4" \
-  -vf "fps=12,scale=${GIF_W}:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=none:diff_mode=rectangle" \
+  -vf "fps=12,${SCALE}split[a][b];[a]palettegen=max_colors=${COLORS}:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle" \
   -loop 0 "$OUT"
 echo "wrote $OUT ($(( $(stat -c %s "$OUT") / 1024 )) KB)"
