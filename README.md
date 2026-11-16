@@ -86,4 +86,4 @@ Se puede lanzar con `bin/ytk` o con `python3 -m ytk` desde la raíz del repo.
 ## Versiones y licencia
 
 `ytk --version` muestra la versión. Los cambios de cada una están en `CHANGELOG.md`; cada versión es una etiqueta de
-git (`v0.1.0`…) y una página de descarga en *Releases*. Licencia MIT.
+git (`v0.2.0`…) y una página de descarga en *Releases*. Licencia MIT.

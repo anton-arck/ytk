@@ -1,9 +1,9 @@
 # Changelog
 
 Versions follow [semantic versioning](https://semver.org/): new features bump the middle number, fixes the last.
-Download a specific version from the Releases page, or `git clone --branch v0.1.0 <repo>`.
+Download a specific version from the Releases page, or `git clone --branch v0.2.0 <repo>`.
 
-## Unreleased
+## 0.2.0
 - Code split from one 1200-line `ytk.py` into the `ytk/` package (one module per responsibility). Launch with `bin/ytk` or `python3 -m ytk`; behaviour is unchanged.
 
 ## 0.1.0
