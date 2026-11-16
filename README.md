@@ -47,3 +47,11 @@ Las miniaturas se guardan en `~/.cache/ytk`; el registro de mpv, en `~/.cache/yt
 - `espacio a` baja el audio (opus, en `~/Videos/ytk/audio/`) y `espacio d` baja el video (mkv, en `~/Videos/ytk/`) del video seleccionado. Se hace en segundo plano; la barra de estado avisa al terminar. Registro en `~/.cache/ytk/dl.log`.
 - Los videos bajados se marcan con `⬇` y Enter reproduce el archivo local (sin red, y también recuerda dónde te quedaste).
 - `YTK_DOWNLOADS` cambia la carpeta.
+
+## Cambiar de canción en una lista
+
+**Desde ytk** (sin enfocar mpv; ytk le habla por un socket en `$XDG_RUNTIME_DIR`):
+- `]` siguiente canción y `[` anterior (también `espacio ]` y `espacio [`).
+- Con una lista o un Mix sonando, ábrela en ytk (`o`), elige una canción y pulsa Enter: salta a esa canción en el mismo mpv, sin abrir otro.
+
+**Dentro de mpv** (con su ventana enfocada): `>` siguiente, `<` anterior, y `g` luego `p` abre un selector de la lista con filtro (escribes para buscar, flechas y Enter para elegir).

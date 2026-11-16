@@ -7,7 +7,7 @@ Opcional: Pillow (si falta, las miniaturas se convierten con ffmpeg).
 
 Uso: ytk [BÚSQUEDA...]
 Variables: YTK_HEIGHT (calidad máxima, 720 por defecto), YTK_MPV_ARGS (opciones extra para mpv), YTK_DOWNLOADS (carpeta de descargas).
-Tecla líder: espacio abre un menú (f buscar, m modo, o abrir, p reproducir todo, a/d descargar audio/video, h historial, b volver, n más, q salir).
+Tecla líder: espacio abre un menú (f buscar, m modo, o abrir, p reproducir todo, a/d descargar audio/video, h historial, ] [ siguiente/anterior canción, b volver, n más, q salir).
 Teclas: flechas o h j k l mover · Enter reproducir (listas completas) · o abrir una lista o el Mix de un video · P reproducir todo lo que ves · Tab cambia el modo
 (mixto, videos, listas) · b volver · / buscar · n más resultados · q salir
 """
@@ -21,6 +21,7 @@ import re
 import select
 import shlex
 import shutil
+import socket
 import signal
 import struct
 import subprocess
@@ -39,6 +40,7 @@ HISTORY_FILE = os.path.join(STATE_HOME, "ytk", "history.json")
 WATCH_LATER = os.path.join(STATE_HOME, "mpv", "watch_later")   # donde mpv guarda la posición al salir
 HISTORY_MAX = 200
 MPV_TRIES = 5
+RUNTIME = os.environ.get("XDG_RUNTIME_DIR") or CACHE      # carpeta solo tuya: ahí va el socket de control de mpv
 DOWNLOADS = os.path.expanduser(os.environ.get("YTK_DOWNLOADS") or "~/Videos/ytk")
 LOCAL_NAME = re.compile(r"\[([A-Za-z0-9_-]{6,64})\]\.(?!part$|ytdl$|temp\.)[A-Za-z0-9]{2,5}$")
 CELL_W = 34          # ancho objetivo de cada celda, en columnas
@@ -127,6 +129,8 @@ MENU = {
     "a": ("descargar audio", "dl_audio"),
     "d": ("descargar video", "dl_video"),
     "h": ("historial / continuar viendo", "history"),
+    "]": ("siguiente canción", "next"),
+    "[": ("canción anterior", "prev"),
     "b": ("volver", "back"),
     "n": ("más resultados", "more"),
     "q": ("salir", "quit"),
@@ -373,6 +377,31 @@ def history_add(item):
         pass
 
 
+def mpv_cmd(sock_path, *args):
+    """Manda un comando al mpv que suena (socket de control). Devuelve su "data" o None si falla."""
+    try:
+        with socket.socket(socket.AF_UNIX) as s:
+            s.settimeout(1.5)
+            s.connect(sock_path)
+            s.sendall((json.dumps({"command": list(args), "request_id": 7}) + "\n").encode())
+            buf = b""
+            while True:
+                chunk = s.recv(65536)
+                if not chunk:
+                    return None
+                buf += chunk
+                for line in buf.split(b"\n")[:-1]:
+                    try:
+                        r = json.loads(line)
+                    except ValueError:
+                        continue
+                    if r.get("request_id") == 7:
+                        return r.get("data") if r.get("error") == "success" else None
+                buf = buf.split(b"\n")[-1]
+    except (OSError, ValueError):
+        return None
+
+
 def local_files(sub=""):
     """Archivos descargados en DOWNLOADS[/sub]: id -> ruta. El id va entre corchetes al final del nombre ([id].ext)."""
     out, base = {}, os.path.join(DOWNLOADS, sub)
@@ -427,6 +456,8 @@ class App:
         self.stack = []            # vistas anteriores, para volver con b
         self.scan_local()          # self.local: id -> archivo (el video gana al audio); self.has_video: ids
         self.downloads = {}        # id -> (proceso yt-dlp, título, "audio"|"video")
+        self.sock = None           # socket de control del mpv actual
+        self.now = None            # "playlist:ID" | "mix:ID" mientras suena una lista o mix lanzado desde ytk
         self.players = []          # procesos mpv lanzados (se recogen al terminar para no dejar zombis)
         self.gen = 0
         self.sel = 0
@@ -486,6 +517,9 @@ class App:
         if len(alive) != len(self.players):
             self.dirty = True              # un mpv terminó: puede haber guardado una posición nueva
         self.players = alive
+        if not alive:
+            self.now = None
+            self.rm_sock()
         for vid, (proc, title, kind) in list(self.downloads.items()):
             if proc.poll() is None:
                 continue
@@ -662,7 +696,9 @@ class App:
             return
         os.makedirs(CACHE, exist_ok=True)
         os.makedirs(WATCH_LATER, exist_ok=True)
-        cmd = ["mpv", "--force-window=immediate", "--fs=no", "--ytdl-format=" + ytdl_format(),
+        self.rm_sock()
+        self.sock = os.path.join(RUNTIME, f"ytk-mpv-{os.getpid()}-{int(time.monotonic() * 1000)}.sock")
+        cmd = ["mpv", "--force-window=immediate", "--fs=no", "--input-ipc-server=" + self.sock, "--ytdl-format=" + ytdl_format(),
                "--save-position-on-quit", "--resume-playback=yes", "--watch-later-directory=" + WATCH_LATER,
                *(["--title=" + title] if title else []), *shlex.split(os.environ.get("YTK_MPV_ARGS", "")), "--", url]
         for p in self.players:                 # un solo mpv a la vez: se cierra el anterior (guarda su posición)
@@ -683,8 +719,11 @@ class App:
             return
         it = self.items[self.sel]
         history_add(it)
+        if it["kind"] == "video" and self.jump(it):
+            return
         if it["kind"] == "list":
             self.launch(it["url"], label=f"lista {it['title']}")
+            self.now = f"playlist:{it['id']}"
         elif it["id"] in self.local and os.path.isfile(self.local[it["id"]]):
             self.launch(self.local[it["id"]], title=it["title"], label="(local) ")
         else:
@@ -694,6 +733,38 @@ class App:
         video = local_files()
         self.has_video = set(video)
         self.local = {**local_files("audio"), **video}
+
+    def rm_sock(self):
+        if self.sock:
+            try:
+                os.unlink(self.sock)
+            except OSError:
+                pass
+
+    def playing(self):
+        return self.sock is not None and any(p.poll() is None for p in self.players)
+
+    def jump(self, it):
+        """Si ya suena la lista/mix que estás viendo, salta a esta canción en ese mpv (sin abrir otro)."""
+        src = self.source
+        if not (src and src["kind"] in ("playlist", "mix") and self.now == f"{src['kind']}:{src['id']}" and self.playing()):
+            return False
+        pl = mpv_cmd(self.sock, "get_property", "playlist")
+        if not isinstance(pl, list):
+            return False
+        for idx, e in enumerate(pl):
+            if isinstance(e, dict) and f"v={it['id']}" in str(e.get("filename", "")):
+                mpv_cmd(self.sock, "playlist-play-index", idx)
+                self.status = clean(f"▶ {idx + 1}/{len(pl)} · {it['title']}")
+                return True
+        return False
+
+    def step(self, direction):
+        if not self.playing():
+            self.status = "No hay nada sonando"
+            return
+        mpv_cmd(self.sock, "playlist-next" if direction > 0 else "playlist-prev")
+        self.status = clean("⏭ siguiente" if direction > 0 else "⏮ anterior")
 
     def download(self, kind):
         if not self.items or self.items[self.sel]["kind"] != "video":
@@ -730,6 +801,7 @@ class App:
             return
         url = mix_url(src["id"]) if src["kind"] == "mix" else f"https://www.youtube.com/playlist?list={src['id']}"
         self.launch(url, label=("mix " if src["kind"] == "mix" else "lista ") + str(src.get("title")))
+        self.now = f"{src['kind']}:{src['id']}"
 
     def move(self, delta, absolute=False):
         n = len(self.items)
@@ -792,6 +864,8 @@ class App:
             self.set_mode(action[5:])
         elif action == "open":
             self.open_list()
+        elif action in ("next", "prev"):
+            self.step(1 if action == "next" else -1)
         elif action == "history":
             self.open_history()
         elif action == "play_all":
@@ -877,6 +951,10 @@ class App:
                 self.open_history()
             elif key == "P":
                 self.play_all()
+            elif key == "]":
+                self.step(1)
+            elif key == "[":
+                self.step(-1)
             elif key in ("b", "bs", "esc"):
                 self.back()
             elif key == "tab":
