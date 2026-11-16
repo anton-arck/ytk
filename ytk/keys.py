@@ -1,38 +1,40 @@
-"""Teclado: menú de la tecla líder y manejo de cada tecla."""
+"""Keyboard: the leader-key menu and the handling of each key."""
 
 from .config import PAGE
+from .i18n import t, toggle
 from .terminal import parse_keys
 from .youtube import MODES
 
 
-# Menú de la tecla líder (espacio), como which-key de LazyVim: tecla -> (texto, acción | submenú)
+# Leader-key menu (space), like LazyVim's which-key: key -> (text key in i18n, action | submenu)
 MENU = {
-    "f": ("buscar", "search"),
-    "m": ("modo de búsqueda…", {
-        "m": ("mixto: videos y listas", "mode:mixto"),
-        "v": ("solo videos", "mode:videos"),
-        "l": ("solo listas", "mode:listas"),
+    "f": ("m.search", "search"),
+    "m": ("m.mode", {
+        "m": ("m.mode_mixed", "mode:mixed"),
+        "v": ("m.mode_videos", "mode:videos"),
+        "l": ("m.mode_lists", "mode:lists"),
     }),
-    "o": ("abrir lista / mix", "open"),
-    "i": ("información del video y canal", "info"),
-    "c": ("canal…", {
-        "v": ("videos del canal", "channel:videos"),
-        "l": ("listas del canal", "channel:playlists"),
+    "o": ("m.open", "open"),
+    "i": ("m.info", "info"),
+    "c": ("m.channel", {
+        "v": ("m.channel_videos", "channel:videos"),
+        "l": ("m.channel_lists", "channel:playlists"),
     }),
-    "p": ("reproducir todo", "play_all"),
-    "a": ("descargar audio", "dl_audio"),
-    "d": ("descargar video", "dl_video"),
-    "h": ("historial / continuar viendo", "history"),
-    "]": ("siguiente canción", "next"),
-    "[": ("canción anterior", "prev"),
-    "b": ("volver", "back"),
-    "n": ("más resultados", "more"),
-    "q": ("salir", "quit"),
+    "p": ("m.play_all", "play_all"),
+    "a": ("m.dl_audio", "dl_audio"),
+    "d": ("m.dl_video", "dl_video"),
+    "h": ("m.history", "history"),
+    "]": ("m.next", "next"),
+    "[": ("m.prev", "prev"),
+    "b": ("m.back", "back"),
+    "n": ("m.more", "more"),
+    "L": ("m.lang", "lang"),
+    "q": ("m.quit", "quit"),
 }
 
 
 class KeysMixin:
-    """Teclado: menú de la tecla líder y manejo de cada tecla."""
+    """Keyboard: the leader-key menu and the handling of each key."""
 
     def leader_node(self):
         node = MENU
@@ -41,7 +43,7 @@ class KeysMixin:
         return node
 
     def run_action(self, action):
-        """Ejecuta una acción del menú líder. Devuelve False para salir."""
+        """Run a leader-menu action. Returns False to quit."""
         if action == "search":
             self.mode, self.prompt = "prompt", ""
         elif action.startswith("mode:"):
@@ -64,12 +66,15 @@ class KeysMixin:
             self.back()
         elif action == "more":
             self.more()
+        elif action == "lang":
+            toggle()
+            self.status = t("lang_set")
         elif action == "quit":
             return False
         return True
 
     def handle(self, data):
-        """Devuelve False para salir."""
+        """Returns False to quit."""
         for t in parse_keys(data):
             self.dirty = True
             if t == "quit":

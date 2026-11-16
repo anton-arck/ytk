@@ -1,4 +1,4 @@
-"""Descarga y conversión de miniaturas."""
+"""Thumbnail download and conversion."""
 
 import os
 import subprocess

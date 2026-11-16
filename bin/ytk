@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Lanzador de ytk: funciona también a través de un enlace simbólico (p. ej. ~/.local/bin/ytk)."""
+"""ytk launcher: also works through a symlink (e.g. ~/.local/bin/ytk)."""
 import os
 import sys
 

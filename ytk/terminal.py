@@ -1,4 +1,4 @@
-"""Terminal: tamaño, protocolo gráfico de kitty y lectura de teclas."""
+"""Terminal: size, kitty graphics protocol and key reading."""
 
 import base64
 import fcntl
@@ -10,7 +10,7 @@ import termios
 
 
 def term_size():
-    """filas, columnas, ancho y alto de una celda en píxeles (con valores por defecto)."""
+    """rows, columns, and the width and height of a cell in pixels (with defaults)."""
     try:
         r, c, xp, yp = struct.unpack("HHHH", fcntl.ioctl(1, termios.TIOCGWINSZ, b"\0" * 8))
     except OSError:
@@ -24,7 +24,7 @@ def gfx(ctrl, payload=""):
 
 
 def gfx_transmit(img_id, png):
-    """Guarda la imagen en el terminal (sin mostrarla); se coloca después con gfx_place."""
+    """Store the image in the terminal (without showing it); it is placed later with gfx_place."""
     b = base64.standard_b64encode(png).decode()
     chunks = [b[i:i + 4096] for i in range(0, len(b), 4096)] or [""]
     for i, ch in enumerate(chunks):

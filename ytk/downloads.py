@@ -1,4 +1,4 @@
-"""Descargas de audio y video en segundo plano y archivos locales."""
+"""Background audio/video downloads and local files."""
 
 import os
 import shutil
@@ -6,12 +6,13 @@ import subprocess
 
 from .config import CACHE, DOWNLOADS
 from .storage import local_files
+from .i18n import t
 from .text import clean
 from .youtube import ytdl_format
 
 
 class DownloadsMixin:
-    """Descargas de audio y video en segundo plano y archivos locales."""
+    """Background audio/video downloads and local files."""
 
     def scan_local(self):
         video = local_files()
@@ -20,17 +21,17 @@ class DownloadsMixin:
 
     def download(self, kind):
         if not self.items or self.items[self.sel]["kind"] != "video":
-            self.status = "Elige un video para descargarlo (las listas no se descargan)"
+            self.status = t("dl.pick_video")
             return
         it = self.items[self.sel]
         if not shutil.which("yt-dlp"):
-            self.status = "yt-dlp no está instalado"
+            self.status = t("dl.no_ytdlp")
             return
         if it["id"] in self.downloads:
-            self.status = "Ya se está descargando"
+            self.status = t("dl.running")
             return
         if it["id"] in (self.has_video if kind == "video" else local_files("audio")):
-            self.status = f"El {kind} ya está descargado (Enter lo reproduce)"
+            self.status = t("dl.already", kind=kind)
             return
         outdir = os.path.join(DOWNLOADS, "audio") if kind == "audio" else DOWNLOADS
         os.makedirs(outdir, exist_ok=True)
@@ -43,4 +44,4 @@ class DownloadsMixin:
             stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
         log.close()
         self.downloads[it["id"]] = (proc, it["title"], kind)
-        self.status = clean(f"⏳ descargando {kind} en {outdir}: {it['title']}")
+        self.status = clean(t("dl.started", kind=kind, outdir=outdir, title=it["title"]))

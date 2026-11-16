@@ -1,4 +1,4 @@
-"""La aplicación: junta las piezas y corre el bucle principal."""
+"""The application: puts the pieces together and runs the main loop."""
 
 import os
 import queue
@@ -15,6 +15,7 @@ from .downloads import DownloadsMixin
 from .keys import KeysMixin
 from .navigation import NavigationMixin
 from .playback import PlaybackMixin
+from .i18n import t
 from .terminal import gfx_transmit
 from .text import clean
 from .thumbs import fetch_thumb
@@ -23,7 +24,7 @@ from .youtube import MODES
 
 
 class App(PlaybackMixin, DownloadsMixin, NavigationMixin, ViewMixin, KeysMixin):
-    """Estado de la aplicación; el trabajo está repartido en los mixins de cada módulo."""
+    """Application state; the work is split across the mixins of each module."""
 
     def __init__(self):
         self.items = []
@@ -31,33 +32,33 @@ class App(PlaybackMixin, DownloadsMixin, NavigationMixin, ViewMixin, KeysMixin):
         self.count = 0
         self.exhausted = False
         self.search_mode = MODES[0]
-        self.leader = None         # None = normal; lista = ruta abierta en el menú de la tecla líder
-        self.stack = []            # vistas anteriores, para volver con b
-        self.scan_local()          # self.local: id -> archivo (el video gana al audio); self.has_video: ids
-        self.downloads = {}        # id -> (proceso yt-dlp, título, "audio"|"video")
-        self.sock = None           # socket de control del mpv actual
-        self.now = None            # "playlist:ID" | "mix:ID" mientras suena una lista o mix lanzado desde ytk
-        self.players = []          # procesos mpv lanzados (se recogen al terminar para no dejar zombis)
+        self.leader = None         # None = normal; list = path currently open in the leader menu
+        self.stack = []            # previous views, to go back with b
+        self.scan_local()          # self.local: id -> file (video wins over audio); self.has_video: ids
+        self.downloads = {}        # id -> (yt-dlp process, title, "audio"|"video")
+        self.sock = None           # control socket of the current mpv
+        self.now = None            # "playlist:ID" | "mix:ID" while a playlist or mix launched from ytk is playing
+        self.players = []          # launched mpv processes (reaped when they end so no zombies are left)
         self.gen = 0
         self.sel = 0
         self.top = 0
-        self.info = None           # video/lista cuyo panel de información está abierto
-        self.info_cache = {}       # id -> datos extra (dict) | "loading" | "error: ..."
+        self.info = None           # video/playlist whose info panel is open
+        self.info_cache = {}       # id -> extra data (dict) | "loading" | "error: ..."
         self.mode = "normal"       # normal | prompt
         self.prompt = ""
-        self.status = "Pulsa / para buscar"
+        self.status = t("press_search")
         self.dirty = True
         self.winch = False
         self.events = queue.Queue()
         self.thumb = {}            # id -> queued | ready | fail
-        self.sent = {}             # id -> id numérico de imagen ya enviado al terminal
+        self.sent = {}             # id -> numeric image id already sent to the terminal
         self.next_img = 1
         self.thumbq = queue.Queue()
         self.layout = (1, 1, 1, 1, 1, 1, 1, 1)
         for _ in range(THUMB_WORKERS):
             threading.Thread(target=self.thumb_worker, daemon=True).start()
 
-    # --- trabajo en segundo plano ---
+    # --- background work ---
     def thumb_worker(self):
         while True:
             vid, url = self.thumbq.get()
@@ -71,16 +72,16 @@ class App(PlaybackMixin, DownloadsMixin, NavigationMixin, ViewMixin, KeysMixin):
         alive = [p for p in self.players if p.poll() is None]
         for p in list(self.players):
             cmd, t0, attempt = p.ytk
-            # código 2 = mpv no pudo abrir el video. YouTube firma el enlace con tu IP y con datos móviles
-            # la IP cambia entre pedidos (error 403), así que se reintenta con un enlace nuevo.
+            # exit code 2 = mpv could not open the video. YouTube signs the link with your IP, and on mobile data
+            # the IP changes between requests (error 403), so it retries with a fresh link.
             if p.returncode == 2 and attempt < MPV_TRIES and time.monotonic() - t0 < 120:
                 self.spawn(cmd, attempt + 1)
                 alive.append(self.players[-1])
-                self.status = f"mpv no pudo abrir el video; reintentando ({attempt + 1}/{MPV_TRIES})…"
+                self.status = t("mpv_retry", n=attempt + 1, max=MPV_TRIES)
             elif p.returncode == 2 and attempt >= MPV_TRIES:
-                self.status = f"✘ mpv no pudo abrir el video tras {MPV_TRIES} intentos (mira ~/.cache/ytk/mpv.log)"
+                self.status = t("mpv_gave_up", max=MPV_TRIES)
         if len(alive) != len(self.players):
-            self.dirty = True              # un mpv terminó: puede haber guardado una posición nueva
+            self.dirty = True              # an mpv ended: it may have saved a new position
         self.players = alive
         if not alive:
             self.now = None
@@ -91,8 +92,8 @@ class App(PlaybackMixin, DownloadsMixin, NavigationMixin, ViewMixin, KeysMixin):
             del self.downloads[vid]
             self.scan_local()
             self.dirty = True
-            self.status = clean(f"✔ descargado ({kind}): {title}" if proc.returncode == 0
-                                else f"✘ falló la descarga de {title} (mira ~/.cache/ytk/dl.log)")
+            self.status = clean(t("dl.done", kind=kind, title=title) if proc.returncode == 0
+                                else t("dl.failed", title=title))
         while True:
             try:
                 ev = self.events.get_nowait()

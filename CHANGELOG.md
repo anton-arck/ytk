@@ -1,7 +1,11 @@
 # Changelog
 
 Versions follow [semantic versioning](https://semver.org/): new features bump the middle number, fixes the last.
-Download a specific version from the Releases page, or `git clone --branch v0.2.0 <repo>`.
+Download a specific version from the Releases page, or `git clone --branch v0.3.0 <repo>`.
+
+## 0.3.0
+- Interface in English and Spanish: starts in the system language (`$LANG`), `space L` switches and remembers the choice, `YTK_LANG` forces one. README in English (`README.md`) with the Spanish version in `README.es.md`.
+- Code comments, docstrings and `ROADMAP.md` translated to English.
 
 ## 0.2.0
 - Code split from one 1200-line `ytk.py` into the `ytk/` package (one module per responsibility). Launch with `bin/ytk` or `python3 -m ytk`; behaviour is unchanged.

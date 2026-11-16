@@ -1,13 +1,20 @@
 # ytk
 
-Busca videos de YouTube desde la terminal y míralos con mpv. Muestra las miniaturas en una cuadrícula con el
-protocolo gráfico de kitty (también funciona dentro de zellij).
+[Español](README.es.md) · **English**
 
-## Instalación
+Search YouTube from the terminal and watch with mpv. Thumbnails are shown in a grid using kitty's graphics protocol
+(it also works inside zellij). The interface comes in English and Spanish.
 
-**Necesitas** [kitty](https://sw.kovidgoyal.net/kitty/) (o una terminal con su protocolo gráfico), `python3` (3.9 o más),
-[`yt-dlp`](https://github.com/yt-dlp/yt-dlp) y [`mpv`](https://mpv.io/). Opcional: `python-pillow` (si falta, las
-miniaturas se convierten con `ffmpeg`).
+## Language
+
+ytk starts in your system language (`$LANG`). Press `space L` to switch between English and Spanish instantly; the
+choice is saved in `~/.local/state/ytk/lang`. `YTK_LANG=en` or `YTK_LANG=es` forces one (it takes priority).
+
+## Installation
+
+**Requirements:** [kitty](https://sw.kovidgoyal.net/kitty/) (or a terminal with its graphics protocol), `python3`
+(3.9 or newer), [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) and [`mpv`](https://mpv.io/). Optional: `python-pillow`
+(if missing, thumbnails are converted with `ffmpeg`).
 
 ```sh
 # Arch / Manjaro / Garuda
@@ -20,7 +27,7 @@ sudo apt install mpv kitty python3-pil ffmpeg && python3 -m pip install --user -
 sudo dnf install yt-dlp mpv kitty python3-pillow
 ```
 
-**Instalar ytk** (no hay nada que compilar): clona el repo y enlaza el lanzador a una carpeta de tu `PATH`.
+**Install ytk** (nothing to build): clone the repo and link the launcher into a folder on your `PATH`.
 
 ```sh
 git clone https://github.com/anton-arck/ytk.git ~/.local/share/ytk
@@ -28,95 +35,102 @@ mkdir -p ~/.local/bin && ln -sf ~/.local/share/ytk/bin/ytk ~/.local/bin/ytk
 ytk --version
 ```
 
-(Asegúrate de que `~/.local/bin` esté en tu `PATH`.) Para quedarte en una versión concreta:
-`git -C ~/.local/share/ytk checkout v0.2.0`; para actualizar: `git -C ~/.local/share/ytk pull`. También puedes
-descargar el `.zip` de una versión desde *Releases*, descomprimirlo y ejecutar `bin/ytk` desde ahí.
+(Make sure `~/.local/bin` is in your `PATH`.) To stay on a specific version:
+`git -C ~/.local/share/ytk checkout v0.3.0`; to update: `git -C ~/.local/share/ytk pull`. You can also download a
+version's `.zip` from *Releases*, unpack it and run `bin/ytk` from there.
 
-> **Aviso:** ytk depende de `yt-dlp`, que lee YouTube sin API oficial. Cuando YouTube cambia algo puede dejar de
-> funcionar hasta que salga un `yt-dlp` nuevo: actualízalo primero (`yt-dlp -U`, o el gestor de paquetes) antes de
-> reportar un problema.
+> **Heads up:** ytk relies on `yt-dlp`, which reads YouTube without an official API. When YouTube changes something it
+> may stop working until a new `yt-dlp` is out: update it first (`yt-dlp -U`, or your package manager) before
+> reporting a problem.
 
-## Uso
+## Usage
 
 ```
-ytk                      # abre y pulsa / para buscar
-ytk big buck bunny       # busca directo
+ytk                      # opens; press / to search
+ytk big buck bunny       # searches right away
 ```
 
-**Tecla líder (como LazyVim):** `espacio` abre un menú que muestra las opciones, y cada letra es una acción:
+**Leader key (like LazyVim):** `space` opens a menu that shows the options, and each letter is an action:
 
-| Teclas | Acción |
+| Keys | Action |
 |---|---|
-| `espacio f` | buscar |
-| `espacio m` → `m` / `v` / `l` | modo de búsqueda: mixto, solo videos, solo listas (repite la búsqueda actual) |
-| `espacio o` | abrir una lista, o el Mix de un video |
-| `espacio p` | reproducir todo lo que estás viendo (lista o mix) |
-| `espacio i` | información del video: canal y suscriptores, duración, vistas, likes, fecha, resolución y descripción |
-| `espacio c` → `v` / `l` | abrir el canal del video: sus videos o sus listas de reproducción |
-| `espacio b` / `n` / `q` | volver / más resultados / salir |
+| `space f` | search |
+| `space m` → `m` / `v` / `l` | search mode: mixed, videos only, playlists only (repeats the current search) |
+| `space o` | open a playlist, or a video's Mix |
+| `space p` | play everything you are viewing (playlist or mix) |
+| `space i` | video info: channel and subscribers, duration, views, likes, date, resolution and description |
+| `space c` → `v` / `l` | open the video's channel: its videos or its playlists |
+| `space L` | switch the interface language (English ⇄ español); it is saved |
+| `space b` / `n` / `q` | back / more results / quit |
 
-Al buscar (`espacio f` o `/`) aparece un cuadro flotante, como el de LazyVim: escribes, `Enter` busca, `Esc` cancela y
-`Tab` cambia el modo (el cuadro muestra cuál está activo).
+When searching (`space f` or `/`) a floating box appears, like LazyVim's: type, `Enter` searches, `Esc` cancels and
+`Tab` changes the mode (the box shows which one is active).
 
-En el panel de información: `c` videos del canal · `l` listas del canal · `Enter` reproducir · `Esc` cerrar. Dentro de un canal, `Tab` alterna entre sus videos y sus listas, y `b` vuelve.
+In the info panel: `c` channel videos · `l` channel playlists · `Enter` play · `Esc` close. Inside a channel, `Tab`
+toggles between its videos and its playlists, and `b` goes back.
 
-`Esc` cancela el menú y `Backspace` sube un nivel. Los atajos directos de abajo siguen funcionando.
+`Esc` cancels the menu and `Backspace` goes up one level. The direct shortcuts below keep working.
 
-Teclas: flechas o `h j k l` mover · `Enter` reproducir (una lista se reproduce completa) · `o` abrir una lista, o el
-**Mix** que YouTube genera a partir de un video · `i` información · `c` canal · `P` reproducir de corrido lo que estás viendo (lista o mix) ·
-`Tab` cambia el modo de búsqueda · `b` volver · `/` buscar · `n` más resultados · `g`/`G` inicio/fin · `q` salir.
+Keys: arrows or `h j k l` move · `Enter` play (a playlist plays whole) · `o` open a playlist, or the **Mix** YouTube
+generates from a video · `i` info · `c` channel · `P` play everything you are viewing (playlist or mix) ·
+`Tab` changes the search mode · `b` back · `/` search · `n` more results · `g`/`G` start/end · `q` quit.
 
-Modos de búsqueda (`Tab`): **mixto** (videos con listas intercaladas, como la web; es el de inicio), **videos** y **listas**.
+Search modes (`Tab`): **mixed** (videos with playlists mixed in, like the website; the default), **videos** and
+**playlists**.
 
-Variables: `YTK_HEIGHT` (calidad máxima, 720 por defecto) y `YTK_MPV_ARGS` (opciones extra para mpv).
-Las miniaturas se guardan en `~/.cache/ytk`; el registro de mpv, en `~/.cache/ytk/mpv.log`.
+Variables: `YTK_HEIGHT` (max quality, 720 by default), `YTK_MPV_ARGS` (extra mpv options), `YTK_DOWNLOADS`
+(downloads folder) and `YTK_LANG` (`es` or `en`). Thumbnails are cached in `~/.cache/ytk`; the mpv log is
+`~/.cache/ytk/mpv.log`.
 
-## Estructura del código
+## Code layout
 
 ```
-bin/ytk            lanzador (sirve también como enlace simbólico en ~/.local/bin)
+bin/ytk            launcher (also works as a symlink in ~/.local/bin)
 ytk/
-  cli.py           punto de entrada: argumentos, --help, --version
-  app.py           la clase App: estado, bucle principal y carga en segundo plano
-  keys.py          menú de la tecla líder y manejo de teclas
-  view.py          dibujo: cuadrícula, panel de información, menú y cuadro de búsqueda
-  navigation.py    cargar fuentes, abrir listas/canales/información, volver, cambiar de modo
-  playback.py      reproducción con mpv y control del mpv que suena
-  downloads.py     descargas de audio y video
-  youtube.py       consultas a yt-dlp (búsqueda, listas, canales, info de un video)
-  sources.py       de dónde salen los elementos (búsqueda, lista, mix, canal, historial)
-  storage.py       historial, posición guardada y archivos descargados
-  thumbs.py        descarga y conversión de miniaturas
-  terminal.py      tamaño de la terminal, protocolo gráfico de kitty y lectura de teclas
-  text.py          anchos, recortes y saneado de texto externo
-  config.py        constantes y rutas
+  cli.py           entry point: arguments, --help, --version
+  i18n.py          interface languages (es/en): detection, preference and texts
+  app.py           the App class: state, main loop and background loading
+  keys.py          leader-key menu and key handling
+  view.py          drawing: grid, info panel, menu and search box
+  navigation.py    load sources, open playlists/channels/info, go back, change mode
+  playback.py      mpv playback and control of the running mpv
+  downloads.py     audio and video downloads
+  youtube.py       yt-dlp queries (search, playlists, channels, video info)
+  sources.py       where items come from (search, playlist, mix, channel, history)
+  storage.py       history, saved position and downloaded files
+  thumbs.py        thumbnail download and conversion
+  terminal.py      terminal size, kitty graphics protocol and key reading
+  text.py          widths, clipping and sanitising of external text
+  config.py        constants and paths
 ```
 
-Se puede lanzar con `bin/ytk` o con `python3 -m ytk` desde la raíz del repo.
+Run it with `bin/ytk` or `python3 -m ytk` from the repo root. `probe/` has two small tests of kitty's image protocol.
 
-`probe/` tiene dos pruebas pequeñas del protocolo de imágenes de kitty.
+## Continue watching
 
-## Continuar viendo
+- Quitting mpv with `q` saves where you were (`--save-position-on-quit`, folder `~/.local/state/mpv/watch_later`);
+  reopening the video resumes there.
+- In the grid, videos with a saved position show `▶ 12:30/45:10` and a progress bar.
+- `H` or `space h` opens the history (what you played last, up to 200), stored in `~/.local/state/ytk/history.json`.
 
-- Al salir de mpv con `q` se guarda el segundo donde ibas (`--save-position-on-quit`, carpeta `~/.local/state/mpv/watch_later`); al volver a abrir el video continúa ahí.
-- En la cuadrícula, los videos con posición guardada muestran `▶ 12:30/45:10` y una barra de progreso.
-- `H` o `espacio h` abre el historial (lo último que reproduciste, hasta 200), guardado en `~/.local/state/ytk/history.json`.
+## Downloads
 
-## Descargas
+- `space a` downloads the audio (opus, in `~/Videos/ytk/audio/`) and `space d` the video (mkv, in `~/Videos/ytk/`) of
+  the selected video. It runs in the background; the status bar tells you when it finishes. Log: `~/.cache/ytk/dl.log`.
+- Downloaded videos are marked with `⬇` and Enter plays the local file (no network, and it remembers where you left off).
+- `YTK_DOWNLOADS` changes the folder.
 
-- `espacio a` baja el audio (opus, en `~/Videos/ytk/audio/`) y `espacio d` baja el video (mkv, en `~/Videos/ytk/`) del video seleccionado. Se hace en segundo plano; la barra de estado avisa al terminar. Registro en `~/.cache/ytk/dl.log`.
-- Los videos bajados se marcan con `⬇` y Enter reproduce el archivo local (sin red, y también recuerda dónde te quedaste).
-- `YTK_DOWNLOADS` cambia la carpeta.
+## Skipping songs in a playlist
 
-## Cambiar de canción en una lista
+**From ytk** (without focusing mpv; ytk talks to it over a socket in `$XDG_RUNTIME_DIR`):
+- `]` next song and `[` previous (also `space ]` and `space [`).
+- With a playlist or Mix playing, open it in ytk (`o`), pick a song and press Enter: it jumps to that song in the same
+  mpv, without opening another.
 
-**Desde ytk** (sin enfocar mpv; ytk le habla por un socket en `$XDG_RUNTIME_DIR`):
-- `]` siguiente canción y `[` anterior (también `espacio ]` y `espacio [`).
-- Con una lista o un Mix sonando, ábrela en ytk (`o`), elige una canción y pulsa Enter: salta a esa canción en el mismo mpv, sin abrir otro.
+**Inside mpv** (with its window focused): `>` next, `<` previous, and `g` then `p` opens a filterable playlist picker
+(type to search, arrows and Enter to choose).
 
-**Dentro de mpv** (con su ventana enfocada): `>` siguiente, `<` anterior, y `g` luego `p` abre un selector de la lista con filtro (escribes para buscar, flechas y Enter para elegir).
+## Versions and license
 
-## Versiones y licencia
-
-`ytk --version` muestra la versión. Los cambios de cada una están en `CHANGELOG.md`; cada versión es una etiqueta de
-git (`v0.2.0`…) y una página de descarga en *Releases*. Licencia MIT.
+`ytk --version` shows the version. Each version's changes are in `CHANGELOG.md`; every version is a git tag
+(`v0.3.0`…) and a download page under *Releases*. MIT license.

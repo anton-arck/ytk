@@ -1,4 +1,4 @@
-"""Reproducción con mpv: lanzar, reintentar, saltar de canción y controlar el mpv que suena."""
+"""mpv playback: launch, retry, skip songs and control the running mpv."""
 
 import json
 import os
@@ -10,12 +10,13 @@ import time
 
 from .config import CACHE, RUNTIME, WATCH_LATER
 from .storage import history_add
+from .i18n import t
 from .text import clean
 from .youtube import mix_url, ytdl_format
 
 
 def mpv_cmd(sock_path, *args):
-    """Manda un comando al mpv que suena (socket de control). Devuelve su "data" o None si falla."""
+    """Send a command to the running mpv (control socket). Returns its "data", or None on failure."""
     try:
         with socket.socket(socket.AF_UNIX) as s:
             s.settimeout(1.5)
@@ -40,12 +41,12 @@ def mpv_cmd(sock_path, *args):
 
 
 class PlaybackMixin:
-    """Reproducción con mpv: lanzar, reintentar, saltar de canción y controlar el mpv que suena."""
+    """mpv playback: launch, retry, skip songs and control the running mpv."""
 
-    # --- acciones ---
+    # --- actions ---
     def launch(self, url, title=None, label=""):
         if not shutil.which("mpv"):
-            self.status = "mpv no está instalado"
+            self.status = t("mpv_missing")
             return
         os.makedirs(CACHE, exist_ok=True)
         os.makedirs(WATCH_LATER, exist_ok=True)
@@ -54,7 +55,7 @@ class PlaybackMixin:
         cmd = ["mpv", "--force-window=immediate", "--fs=no", "--input-ipc-server=" + self.sock, "--ytdl-format=" + ytdl_format(),
                "--save-position-on-quit", "--resume-playback=yes", "--watch-later-directory=" + WATCH_LATER,
                *(["--title=" + title] if title else []), *shlex.split(os.environ.get("YTK_MPV_ARGS", "")), "--", url]
-        for p in self.players:                 # un solo mpv a la vez: se cierra el anterior (guarda su posición)
+        for p in self.players:                 # one mpv at a time: the previous one is closed (it saves its position)
             if p.poll() is None:
                 p.terminate()
         self.spawn(cmd, 1)
@@ -75,10 +76,10 @@ class PlaybackMixin:
         if it["kind"] == "video" and self.jump(it):
             return
         if it["kind"] == "list":
-            self.launch(it["url"], label=f"lista {it['title']}")
+            self.launch(it["url"], label=t("label.playlist") + it["title"])
             self.now = f"playlist:{it['id']}"
         elif it["id"] in self.local and os.path.isfile(self.local[it["id"]]):
-            self.launch(self.local[it["id"]], title=it["title"], label="(local) ")
+            self.launch(self.local[it["id"]], title=it["title"], label=t("label.local"))
         else:
             self.launch(it["url"], title=it["title"])
 
@@ -93,7 +94,7 @@ class PlaybackMixin:
         return self.sock is not None and any(p.poll() is None for p in self.players)
 
     def jump(self, it):
-        """Si ya suena la lista/mix que estás viendo, salta a esta canción en ese mpv (sin abrir otro)."""
+        """If the playlist/mix you are viewing is already playing, jump to this song in that mpv (without opening another)."""
         src = self.source
         if not (src and src["kind"] in ("playlist", "mix") and self.now == f"{src['kind']}:{src['id']}" and self.playing()):
             return False
@@ -109,17 +110,17 @@ class PlaybackMixin:
 
     def step(self, direction):
         if not self.playing():
-            self.status = "No hay nada sonando"
+            self.status = t("nothing_playing")
             return
         mpv_cmd(self.sock, "playlist-next" if direction > 0 else "playlist-prev")
-        self.status = clean("⏭ siguiente" if direction > 0 else "⏮ anterior")
+        self.status = clean(t("step.next") if direction > 0 else t("step.prev"))
 
     def play_all(self):
-        """Reproduce de corrido la lista o el mix que se está viendo."""
+        """Play the playlist or mix being viewed, straight through."""
         src = self.source
         if not src or src["kind"] not in ("playlist", "mix"):
-            self.status = "P reproduce la lista o el mix que estás viendo (ábrelo con o)"
+            self.status = t("play_all_hint")
             return
         url = mix_url(src["id"]) if src["kind"] == "mix" else f"https://www.youtube.com/playlist?list={src['id']}"
-        self.launch(url, label=("mix " if src["kind"] == "mix" else "lista ") + str(src.get("title")))
+        self.launch(url, label=t("label.mix" if src["kind"] == "mix" else "label.playlist") + str(src.get("title")))
         self.now = f"{src['kind']}:{src['id']}"

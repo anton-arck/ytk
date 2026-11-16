@@ -1,4 +1,4 @@
-"""Utilidades de texto: anchos de columna, recortes, saneado de texto externo y formatos de números y tiempos."""
+"""Text utilities: column widths, clipping, sanitising of external text and number/time formats."""
 
 import unicodedata
 
@@ -25,7 +25,7 @@ def clip(s, w):
 
 
 def fit(s, w):
-    """Recorta con … o rellena con espacios hasta exactamente w columnas."""
+    """Clip with … or pad with spaces to exactly w columns."""
     if w <= 0:
         return ""
     if width(s) <= w:
@@ -35,7 +35,7 @@ def fit(s, w):
 
 
 def wrap2(s, w):
-    """Reparte un título en dos líneas de w columnas (la segunda con … si no cabe)."""
+    """Split a title into two lines of w columns (the second ends with … if it does not fit)."""
     words, first, i = s.split(), "", 0
     while i < len(words):
         t = (first + " " + words[i]).strip()
@@ -51,12 +51,12 @@ def wrap2(s, w):
 
 
 def wrap_lines(s, w, limit=None):
-    """Reparte un texto en líneas de w columnas respetando los saltos de línea (limit = máximo de líneas)."""
+    """Split a text into lines of w columns keeping line breaks (limit = maximum number of lines)."""
     out = []
     for para in str(s).split("\n"):
         line = ""
         for word in para.split():
-            while width(word) > w:                      # palabra más larga que la línea: se parte
+            while width(word) > w:                      # word longer than the line: split it
                 head, _ = clip(word, w)
                 if line:
                     out.append(line)
@@ -78,8 +78,8 @@ def wrap_lines(s, w, limit=None):
 
 
 def clean(s):
-    """Quita de un texto externo todo carácter de control o de formato (Cc, Cf...): evita inyectar
-    secuencias de escape en la terminal desde títulos, canales o mensajes de error."""
+    """Strip every control or format character (Cc, Cf...) from external text: prevents injecting
+    escape sequences into the terminal through titles, channel names or error messages."""
     s = "".join(" " if c in "\t\r\n" else c for c in str(s or ""))
     return "".join(c for c in s if not unicodedata.category(c).startswith("C")).strip()
 

@@ -1,3 +1,3 @@
-"""ytk: busca videos de YouTube en la terminal y míralos con mpv."""
+"""ytk: search YouTube from the terminal and watch with mpv."""
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
