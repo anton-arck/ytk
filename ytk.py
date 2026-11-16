@@ -34,6 +34,8 @@ import unicodedata
 import urllib.parse
 import urllib.request
 
+__version__ = "0.1.0"
+
 CACHE = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "ytk")
 STATE_HOME = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
 HISTORY_FILE = os.path.join(STATE_HOME, "ytk", "history.json")
@@ -1180,6 +1182,9 @@ class App:
 def main():
     if "-h" in sys.argv or "--help" in sys.argv:
         print(__doc__)
+        return
+    if "--version" in sys.argv:
+        print(f"ytk {__version__}")
         return
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         sys.exit("ytk necesita una terminal interactiva (kitty).")

@@ -1,5 +1,5 @@
 import sys, os, time, importlib.util
-spec=importlib.util.spec_from_file_location("ytk","/home/anton/claude-projects/yt-kitty/ytk.py"); m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+spec=importlib.util.spec_from_file_location("ytk",os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "ytk.py")); m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 png=open(os.path.expanduser("~/.cache/ytk/aqz-KE-bpKQ.png"),"rb").read()
 variant=sys.argv[1]
 sys.stdout.write("\x1b[?1049h\x1b[2J")

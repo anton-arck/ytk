@@ -59,3 +59,8 @@ Las miniaturas se guardan en `~/.cache/ytk`; el registro de mpv, en `~/.cache/yt
 - Con una lista o un Mix sonando, ábrela en ytk (`o`), elige una canción y pulsa Enter: salta a esa canción en el mismo mpv, sin abrir otro.
 
 **Dentro de mpv** (con su ventana enfocada): `>` siguiente, `<` anterior, y `g` luego `p` abre un selector de la lista con filtro (escribes para buscar, flechas y Enter para elegir).
+
+## Versiones y licencia
+
+`ytk --version` muestra la versión. Los cambios de cada una están en `CHANGELOG.md`; cada versión es una etiqueta de
+git (`v0.1.0`…) y una página de descarga en *Releases*. Licencia MIT.
