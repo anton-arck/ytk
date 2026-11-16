@@ -3,6 +3,9 @@
 Versions follow [semantic versioning](https://semver.org/): new features bump the middle number, fixes the last.
 Download a specific version from the Releases page, or `git clone --branch v0.1.0 <repo>`.
 
+## Unreleased
+- Code split from one 1200-line `ytk.py` into the `ytk/` package (one module per responsibility). Launch with `bin/ytk` or `python3 -m ytk`; behaviour is unchanged.
+
 ## 0.1.0
 - Search YouTube from the terminal (mixed, videos only, lists only) with a 3x3 thumbnail grid (kitty graphics protocol).
 - Play with mpv: single videos, playlists and YouTube Mixes, with resume position and history.

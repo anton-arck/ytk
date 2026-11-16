@@ -38,6 +38,29 @@ Modos de búsqueda (`Tab`): **mixto** (videos con listas intercaladas, como la w
 Variables: `YTK_HEIGHT` (calidad máxima, 720 por defecto) y `YTK_MPV_ARGS` (opciones extra para mpv).
 Las miniaturas se guardan en `~/.cache/ytk`; el registro de mpv, en `~/.cache/ytk/mpv.log`.
 
+## Estructura del código
+
+```
+bin/ytk            lanzador (sirve también como enlace simbólico en ~/.local/bin)
+ytk/
+  cli.py           punto de entrada: argumentos, --help, --version
+  app.py           la clase App: estado, bucle principal y carga en segundo plano
+  keys.py          menú de la tecla líder y manejo de teclas
+  view.py          dibujo: cuadrícula, panel de información, menú y cuadro de búsqueda
+  navigation.py    cargar fuentes, abrir listas/canales/información, volver, cambiar de modo
+  playback.py      reproducción con mpv y control del mpv que suena
+  downloads.py     descargas de audio y video
+  youtube.py       consultas a yt-dlp (búsqueda, listas, canales, info de un video)
+  sources.py       de dónde salen los elementos (búsqueda, lista, mix, canal, historial)
+  storage.py       historial, posición guardada y archivos descargados
+  thumbs.py        descarga y conversión de miniaturas
+  terminal.py      tamaño de la terminal, protocolo gráfico de kitty y lectura de teclas
+  text.py          anchos, recortes y saneado de texto externo
+  config.py        constantes y rutas
+```
+
+Se puede lanzar con `bin/ytk` o con `python3 -m ytk` desde la raíz del repo.
+
 `probe/` tiene dos pruebas pequeñas del protocolo de imágenes de kitty.
 
 ## Continuar viendo
