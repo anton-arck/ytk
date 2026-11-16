@@ -18,15 +18,19 @@ ytk big buck bunny       # busca directo
 | `espacio m` → `m` / `v` / `l` | modo de búsqueda: mixto, solo videos, solo listas (repite la búsqueda actual) |
 | `espacio o` | abrir una lista, o el Mix de un video |
 | `espacio p` | reproducir todo lo que estás viendo (lista o mix) |
+| `espacio i` | información del video: canal y suscriptores, duración, vistas, likes, fecha, resolución y descripción |
+| `espacio c` → `v` / `l` | abrir el canal del video: sus videos o sus listas de reproducción |
 | `espacio b` / `n` / `q` | volver / más resultados / salir |
 
 Al buscar (`espacio f` o `/`) aparece un cuadro flotante, como el de LazyVim: escribes, `Enter` busca, `Esc` cancela y
 `Tab` cambia el modo (el cuadro muestra cuál está activo).
 
+En el panel de información: `c` videos del canal · `l` listas del canal · `Enter` reproducir · `Esc` cerrar. Dentro de un canal, `Tab` alterna entre sus videos y sus listas, y `b` vuelve.
+
 `Esc` cancela el menú y `Backspace` sube un nivel. Los atajos directos de abajo siguen funcionando.
 
 Teclas: flechas o `h j k l` mover · `Enter` reproducir (una lista se reproduce completa) · `o` abrir una lista, o el
-**Mix** que YouTube genera a partir de un video · `P` reproducir de corrido lo que estás viendo (lista o mix) ·
+**Mix** que YouTube genera a partir de un video · `i` información · `c` canal · `P` reproducir de corrido lo que estás viendo (lista o mix) ·
 `Tab` cambia el modo de búsqueda · `b` volver · `/` buscar · `n` más resultados · `g`/`G` inicio/fin · `q` salir.
 
 Modos de búsqueda (`Tab`): **mixto** (videos con listas intercaladas, como la web; es el de inicio), **videos** y **listas**.

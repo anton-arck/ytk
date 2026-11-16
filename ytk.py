@@ -7,7 +7,7 @@ Opcional: Pillow (si falta, las miniaturas se convierten con ffmpeg).
 
 Uso: ytk [BÚSQUEDA...]
 Variables: YTK_HEIGHT (calidad máxima, 720 por defecto), YTK_MPV_ARGS (opciones extra para mpv), YTK_DOWNLOADS (carpeta de descargas).
-Tecla líder: espacio abre un menú (f buscar, m modo, o abrir, p reproducir todo, a/d descargar audio/video, h historial, ] [ siguiente/anterior canción, b volver, n más, q salir).
+Tecla líder: espacio abre un menú (f buscar, m modo, o abrir, p reproducir todo, i información del video, c canal (v videos, l listas), a/d descargar audio/video, h historial, ] [ siguiente/anterior canción, b volver, n más, q salir).
 Teclas: flechas o h j k l mover · Enter reproducir (listas completas) · o abrir una lista o el Mix de un video · P reproducir todo lo que ves · Tab cambia el modo
 (mixto, videos, listas) · b volver · / buscar · n más resultados · q salir
 """
@@ -43,7 +43,9 @@ MPV_TRIES = 5
 RUNTIME = os.environ.get("XDG_RUNTIME_DIR") or CACHE      # carpeta solo tuya: ahí va el socket de control de mpv
 DOWNLOADS = os.path.expanduser(os.environ.get("YTK_DOWNLOADS") or "~/Videos/ytk")
 LOCAL_NAME = re.compile(r"\[([A-Za-z0-9_-]{6,64})\]\.(?!part$|ytdl$|temp\.)[A-Za-z0-9]{2,5}$")
-CELL_W = 34          # ancho objetivo de cada celda, en columnas
+GRID_COLS = 3        # cuadrícula objetivo: 3 columnas x 3 filas = 9 videos por pantalla
+GRID_ROWS = 3
+MIN_CELL_W = 22      # si la ventana es muy angosta, se usan menos columnas
 PAGE = 30            # resultados por búsqueda (y por cada "más")
 THUMB_WORKERS = 6
 HEIGHT = os.environ.get("YTK_HEIGHT", "720")   # calidad máxima de reproducción (por defecto 720p)
@@ -108,6 +110,33 @@ def wrap2(s, w):
     return fit(first, w), fit(rest, w)
 
 
+def wrap_lines(s, w, limit=None):
+    """Reparte un texto en líneas de w columnas respetando los saltos de línea (limit = máximo de líneas)."""
+    out = []
+    for para in str(s).split("\n"):
+        line = ""
+        for word in para.split():
+            while width(word) > w:                      # palabra más larga que la línea: se parte
+                head, _ = clip(word, w)
+                if line:
+                    out.append(line)
+                    line = ""
+                out.append(head)
+                word = word[len(head):]
+            if line and width(line) + 1 + width(word) > w:
+                out.append(line)
+                line = word
+            else:
+                line = (line + " " + word).strip()
+        out.append(line)
+    while out and not out[-1]:
+        out.pop()
+    if limit is not None and len(out) > limit:
+        out = out[:limit]
+        out[-1] = fit(out[-1], w - 1).rstrip() + "…"
+    return out
+
+
 def clean(s):
     """Quita de un texto externo todo carácter de control o de formato (Cc, Cf...): evita inyectar
     secuencias de escape en la terminal desde títulos, canales o mensajes de error."""
@@ -115,6 +144,7 @@ def clean(s):
     return "".join(c for c in s if not unicodedata.category(c).startswith("C")).strip()
 
 
+CHANNEL_ID = re.compile(r"^UC[A-Za-z0-9_-]{22}$")
 VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{6,64}$")   # ids de video (11) y de lista (PL..., hasta ~40)
 # Menú de la tecla líder (espacio), como which-key de LazyVim: tecla -> (texto, acción | submenú)
 MENU = {
@@ -125,6 +155,11 @@ MENU = {
         "l": ("solo listas", "mode:listas"),
     }),
     "o": ("abrir lista / mix", "open"),
+    "i": ("información del video y canal", "info"),
+    "c": ("canal…", {
+        "v": ("videos del canal", "channel:videos"),
+        "l": ("listas del canal", "channel:playlists"),
+    }),
     "p": ("reproducir todo", "play_all"),
     "a": ("descargar audio", "dl_audio"),
     "d": ("descargar video", "dl_video"),
@@ -138,6 +173,7 @@ MENU = {
 LIST_PREFIX = ("PL", "RD", "OL", "UU", "LL", "FL")
 THUMB_HOSTS = {"i.ytimg.com", "i9.ytimg.com", "yt3.ggpht.com"}
 MODES = ["mixto", "videos", "listas"]
+CHANNEL_TABS = {"videos": "videos", "playlists": "listas"}   # pestaña de YouTube -> nombre en pantalla
 LIST_SEARCH = "https://www.youtube.com/results?search_query={}&sp=EgIQAw%3D%3D"   # filtro: solo listas
 
 
@@ -244,6 +280,7 @@ def _flat(target, end=None):
         if is_list and not vid.startswith(LIST_PREFIX):     # canales (UC...) y otros: se omiten
             continue
         views = d.get("view_count")
+        cid = str(d.get("channel_id") or "")
         thumb = None
         for t in d.get("thumbnails") or []:
             thumb = allowed_thumb(t.get("url")) if isinstance(t, dict) else None
@@ -254,6 +291,7 @@ def _flat(target, end=None):
             "kind": "list" if is_list else "video",
             "title": clean(d.get("title")) or "(sin título)",
             "channel": clean(d.get("channel") or d.get("uploader")),
+            "channel_id": cid if CHANNEL_ID.match(cid) else None,
             "duration": clean(d.get("duration_string") or ("EN VIVO" if d.get("live_status") == "is_live" else "")),
             "views": views if isinstance(views, (int, float)) else None,
             "secs": d.get("duration") if isinstance(d.get("duration"), (int, float)) else None,
@@ -264,6 +302,27 @@ def _flat(target, end=None):
     if not items and p.returncode != 0:
         raise RuntimeError(clean((p.stderr.strip().splitlines() or ["yt-dlp falló"])[-1]))
     return items
+
+
+def video_info(vid):
+    """Datos que la lista plana no trae (fecha, likes, suscriptores, descripción completa...)."""
+    p = subprocess.run(["yt-dlp", "-j", "--no-playlist", "--skip-download", "--no-warnings", "--",
+                        f"https://www.youtube.com/watch?v={vid}"], capture_output=True, text=True, timeout=60)
+    try:
+        d = json.loads(p.stdout.splitlines()[0])
+    except (ValueError, IndexError):
+        raise RuntimeError(clean((p.stderr.strip().splitlines() or ["yt-dlp falló"])[-1]))
+    num = lambda k: d.get(k) if isinstance(d.get(k), (int, float)) else None
+    ud = str(d.get("upload_date") or "")
+    desc = "\n".join(clean(l) for l in str(d.get("description") or "").splitlines())[:4000]
+    return {
+        "date": f"{ud[:4]}-{ud[4:6]}-{ud[6:8]}" if re.fullmatch(r"\d{8}", ud) else "",
+        "likes": num("like_count"), "comments": num("comment_count"), "subs": num("channel_follower_count"),
+        "views": num("view_count"),
+        "res": f"{int(num('width'))}x{int(num('height'))}" + (f" · {int(num('fps'))} fps" if num("fps") else "") if num("width") and num("height") else "",
+        "category": clean(", ".join(str(c) for c in (d.get("categories") or [])[:3])),
+        "desc": desc,
+    }
 
 
 def mix_url(vid):
@@ -292,6 +351,11 @@ def fetch(source, count):
         return history_load()
     if source["kind"] == "playlist":
         return _flat(f"https://www.youtube.com/playlist?list={source['id']}", end=count)
+    if source["kind"] == "channel":
+        items = _flat(f"https://www.youtube.com/channel/{source['id']}/{source['tab']}", end=count)
+        for it in items:     # en las pestañas del canal faltan (o son genéricos) el nombre y el id del canal
+            it["channel"], it["channel_id"] = source["title"], source["id"]
+        return items
     if source["kind"] == "mix":      # el "Mix" que genera YouTube a partir de un video (lista RD + id)
         return _flat(mix_url(source["id"]), end=count)
     q, mode = source["q"], source["mode"]
@@ -355,6 +419,7 @@ def history_load():
         out.append({
             "id": vid, "kind": e["kind"], "title": clean(e.get("title")) or "(sin título)",
             "channel": clean(e.get("channel")), "duration": clean(e.get("duration")),
+            "channel_id": e.get("channel_id") if CHANNEL_ID.match(str(e.get("channel_id") or "")) else None,
             "views": e.get("views") if isinstance(e.get("views"), (int, float)) else None,
             "secs": e.get("secs") if isinstance(e.get("secs"), (int, float)) else None,
             "thumb": allowed_thumb(e.get("thumb")) if is_list else None,
@@ -365,7 +430,7 @@ def history_load():
 
 def history_add(item):
     entries = [e for e in history_load() if e["id"] != item["id"]]
-    keep = {k: item.get(k) for k in ("id", "kind", "title", "channel", "duration", "views", "secs", "thumb")}
+    keep = {k: item.get(k) for k in ("id", "kind", "title", "channel", "channel_id", "duration", "views", "secs", "thumb")}
     entries = ([keep] + entries)[:HISTORY_MAX]
     try:
         os.makedirs(os.path.dirname(HISTORY_FILE), exist_ok=True)
@@ -462,6 +527,8 @@ class App:
         self.gen = 0
         self.sel = 0
         self.top = 0
+        self.info = None           # video/lista cuyo panel de información está abierto
+        self.info_cache = {}       # id -> datos extra (dict) | "loading" | "error: ..."
         self.mode = "normal"       # normal | prompt
         self.prompt = ""
         self.status = "Pulsa / para buscar"
@@ -490,7 +557,8 @@ class App:
         self.gen += 1
         gen = self.gen
         self.source, self.count = source, count
-        what = {"history": "historial", "playlist": f"lista “{source.get('title')}”", "mix": f"mix “{source.get('title')}”"}.get(
+        what = {"history": "historial", "playlist": f"lista “{source.get('title')}”", "mix": f"mix “{source.get('title')}”",
+            "channel": f"canal “{source.get('title')}” ({CHANNEL_TABS.get(source.get('tab'), '')})"}.get(
             source["kind"], f"“{source.get('q')}” ({source.get('mode')})")
         self.status = clean(f"Cargando {what}…")
         self.dirty = True
@@ -551,6 +619,8 @@ class App:
                 self.status = self.summary()
             elif ev[0] == "error" and ev[1] == self.gen:
                 self.status = "Error: " + clean(ev[2])
+            elif ev[0] == "info":
+                self.info_cache[ev[1]] = ev[2]
             elif ev[0] == "thumb":
                 vid, ok = ev[1], ev[2]
                 if not ok:
@@ -579,16 +649,23 @@ class App:
             return f"Historial · {n} (lo último primero)"
         if src["kind"] in ("playlist", "mix"):
             return clean(f"{'Mix' if src['kind'] == 'mix' else 'Lista'} “{src['title']}” · {n} videos")
+        if src["kind"] == "channel":
+            return clean(f"Canal “{src['title']}” · {CHANNEL_TABS[src['tab']]} · {n} (Tab cambia videos/listas)")
         extra = f" ({lists} listas)" if lists else ""
         return clean(f"{n} resultados{extra} para “{src['q']}” · modo {src['mode']}")
 
     # --- dibujo ---
     def compute_layout(self):
         rows, cols, cw, ch = term_size()
-        ncols = max(1, cols // CELL_W)
+        ncols = max(1, min(GRID_COLS, cols // MIN_CELL_W))
         cell_w = cols // ncols
         img_c = max(8, cell_w - 2)
         img_r = max(3, round(img_c * cw * 9 / 16 / ch))
+        # la imagen se reduce (manteniendo 16:9) para que quepan GRID_ROWS filas en la altura disponible
+        room = (rows - 2) // GRID_ROWS - 4
+        if 3 <= room < img_r:
+            img_r = room
+            img_c = max(8, min(img_c, round(img_r * ch * 16 / 9 / cw)))
         cell_h = img_r + 4          # imagen + 2 líneas de título + 1 de datos + 1 de aire
         vis = max(1, (rows - 2) // cell_h)
         self.layout = (rows, cols, ncols, cell_w, img_c, img_r, cell_h, vis)
@@ -624,7 +701,8 @@ class App:
                 else:
                     msg = "sin miniatura" if state == "fail" else "cargando…"
                     out.append(f"\x1b[{y0 + img_r // 2};{x0}H\x1b[2m{fit(msg, img_c)}\x1b[0m")
-                t1, t2 = wrap2(it["title"], img_c)
+                tw = cell_w - 2          # el texto usa todo el ancho de la celda (la imagen puede ser más angosta)
+                t1, t2 = wrap2(it["title"], tw)
                 pos = resume_pos(it["url"]) if it["kind"] == "video" else None
                 if it["kind"] == "list":
                     parts = ("LISTA", it["channel"])
@@ -636,10 +714,10 @@ class App:
                     parts = ("⏳ descargando",) + tuple(parts)
                 elif it["kind"] == "video" and it["id"] in self.local:
                     parts = ("⬇",) + tuple(parts)
-                meta = fit(" · ".join(p for p in parts if p), img_c)
+                meta = fit(" · ".join(p for p in parts if p), tw)
                 if pos and it.get("secs"):
-                    filled = max(1, min(img_c, round(pos / it["secs"] * img_c)))
-                    out.append(f"\x1b[{y0 + img_r + 3};{x0}H\x1b[1m{'━' * filled}\x1b[0m\x1b[2m{'─' * (img_c - filled)}\x1b[0m")
+                    filled = max(1, min(tw, round(pos / it["secs"] * tw)))
+                    out.append(f"\x1b[{y0 + img_r + 3};{x0}H\x1b[1m{'━' * filled}\x1b[0m\x1b[2m{'─' * (tw - filled)}\x1b[0m")
                 on, off = ("\x1b[7;1m", "\x1b[0m") if selected else ("", "")
                 out.append(f"\x1b[{y0 + img_r};{x0}H{on}{t1}{off}")
                 out.append(f"\x1b[{y0 + img_r + 1};{x0}H{on}{t2}{off}")
@@ -648,7 +726,7 @@ class App:
                     for k in range(img_r + 3):
                         out.append(f"\x1b[{y0 + k};{x0 - 1}H\x1b[1m▌\x1b[0m")
         hint = (" Enter busca · Esc cancela · Tab cambia el modo" if self.mode == "prompt"
-                else " espacio menú · hjkl mover · Enter reproducir · / buscar · Tab modo · q salir")
+                else " espacio menú · hjkl mover · Enter reproducir · i info · c canal · / buscar · Tab modo · q salir")
         out.append(f"\x1b[{rows};1H\x1b[2m{fit(hint, cols)}\x1b[0m")
         if self.leader is not None:
             node = self.leader_node()
@@ -664,6 +742,19 @@ class App:
                     cell + " " * max(0, col_w - width(re.sub(r"\x1b\[[0-9;]*m", "", cell))) for cell in row))
             places = [(y, x, img) for (y, x, img) in places if y + img_r - 1 < top]
         cursor = None
+        if self.info is not None:
+            lines = self.info_lines(min(cols - 4, 92) - 4)
+            bw = min(cols - 4, 92)
+            bh = min(len(lines) + 2, rows - 3)
+            bx, by = (cols - bw) // 2 + 1, 2
+            inner = bw - 4
+            ttl = " Información "
+            out.append(f"\x1b[{by};{bx}H\x1b[0;1m╭─" + ttl + "─" * max(0, bw - 3 - width(ttl)) + "╮\x1b[0m")
+            for i in range(bh - 2):
+                style, text = lines[i]
+                out.append(f"\x1b[{by + 1 + i};{bx}H\x1b[0m│ {style}{fit(text, inner)}\x1b[0m │")
+            out.append(f"\x1b[{by + bh - 1};{bx}H\x1b[0m╰" + "─" * (bw - 2) + "╯")
+            places = [(y, x, img) for (y, x, img) in places if y + img_r - 1 < by or y > by + bh - 1]
         if self.mode == "prompt":
             bw = min(cols - 4, max(46, cols // 2))
             bx, by = (cols - bw) // 2 + 1, max(2, rows // 3 - 1)
@@ -688,6 +779,42 @@ class App:
         out.append(f"\x1b[{cursor[0]};{cursor[1]}H\x1b[?25h" if cursor else "\x1b[?25l")
         sys.stdout.write("".join(out))
         sys.stdout.flush()
+
+    def info_lines(self, w):
+        """Líneas (estilo, texto) del panel de información del elemento self.info."""
+        it = self.info
+        ex = self.info_cache.get(it["id"])
+        ex = ex if isinstance(ex, dict) else {}
+        B, D = "\x1b[1m", "\x1b[2m"
+        lines = [(B, t) for t in wrap_lines(it["title"], w, 3)] + [("", "")]
+        if it["kind"] == "list":
+            lines += [("", f"Lista de reproducción · {it['channel']}" if it["channel"] else "Lista de reproducción"),
+                      (D, it["url"]), ("", ""), (D, "Enter reproduce · o abre la lista · c / l videos y listas del canal · Esc cierra")]
+            return lines
+        chan = it["channel"] or "(canal desconocido)"
+        if ex.get("subs") is not None:
+            chan += f" · {human(ex['subs'])} suscriptores"
+        lines.append((B, "Canal: " + chan))
+        stats = [it["duration"], (human(ex.get("views") if ex.get("views") is not None else it["views"]) + " vistas") if (ex.get("views") or it["views"]) else "",
+                 f"👍 {human(ex['likes'])}" if ex.get("likes") is not None else "",
+                 f"💬 {human(ex['comments'])}" if ex.get("comments") is not None else "", ex.get("date", "")]
+        lines.append(("", " · ".join(x for x in stats if x)))
+        extra = " · ".join(x for x in (ex.get("res"), ex.get("category")) if x)
+        if extra:
+            lines.append((D, extra))
+        lines.append((D, it["url"]))
+        lines.append(("", ""))
+        state = self.info_cache.get(it["id"])
+        if state == "loading":
+            lines.append((D, "cargando más datos…"))
+        elif isinstance(state, str):
+            lines.append((D, "no se pudo traer más: " + state))
+        elif ex.get("desc"):
+            lines += [("", t) for t in wrap_lines(ex["desc"], w, 12)]
+        elif it.get("channel_id") is None:
+            lines.append((D, "(sin id de canal: busca de nuevo para poder abrir el canal)"))
+        lines += [("", ""), (D, "c videos del canal · l listas del canal · Enter reproducir · Esc cierra")]
+        return lines
 
     # --- acciones ---
     def launch(self, url, title=None, label=""):
@@ -825,6 +952,38 @@ class App:
                                count=self.count, exhausted=self.exhausted))
         self.start_load(src, PAGE)
 
+    def target_item(self):
+        return self.info if self.info is not None else (self.items[self.sel] if self.items else None)
+
+    def open_info(self):
+        if not self.items:
+            return
+        it = self.items[self.sel]
+        self.info = it
+        if it["kind"] == "video" and it["id"] not in self.info_cache:
+            self.info_cache[it["id"]] = "loading"
+            vid = it["id"]
+
+            def work():
+                try:
+                    self.events.put(("info", vid, video_info(vid)))
+                except Exception as e:
+                    self.events.put(("info", vid, "error: " + clean(e)))
+            threading.Thread(target=work, daemon=True).start()
+
+    def open_channel(self, tab):
+        it = self.target_item()
+        if not it:
+            return
+        if not it.get("channel_id"):
+            self.status = "Este elemento no trae el canal (búscalo de nuevo)"
+            return
+        self.info = None
+        src = {"kind": "channel", "id": it["channel_id"], "tab": tab, "title": it["channel"] or "canal"}
+        self.stack.append(dict(items=self.items, sel=self.sel, top=self.top, source=self.source,
+                               count=self.count, exhausted=self.exhausted))
+        self.start_load(src, PAGE)
+
     def open_history(self):
         self.stack.append(dict(items=self.items, sel=self.sel, top=self.top, source=self.source,
                                count=self.count, exhausted=self.exhausted))
@@ -848,6 +1007,11 @@ class App:
             self.status = f"Modo {mode}"
 
     def cycle_mode(self):
+        src = self.source
+        if src and src["kind"] == "channel":      # en un canal, Tab alterna entre sus videos y sus listas
+            tab = "playlists" if src["tab"] == "videos" else "videos"
+            self.start_load({**src, "tab": tab}, PAGE)
+            return
         self.set_mode(MODES[(MODES.index(self.search_mode) + 1) % len(MODES)])
 
     def leader_node(self):
@@ -864,6 +1028,10 @@ class App:
             self.set_mode(action[5:])
         elif action == "open":
             self.open_list()
+        elif action == "info":
+            self.open_info()
+        elif action.startswith("channel:"):
+            self.open_channel(action[8:])
         elif action in ("next", "prev"):
             self.step(1 if action == "next" else -1)
         elif action == "history":
@@ -900,6 +1068,19 @@ class App:
                     self.search_mode = MODES[(MODES.index(self.search_mode) + 1) % len(MODES)]
                 elif isinstance(t, tuple):
                     self.prompt += t[1]
+                continue
+            if self.info is not None:
+                key = t[1] if isinstance(t, tuple) else t
+                if key in ("esc", "bs", "i", "q"):
+                    self.info = None
+                elif key == "c":
+                    self.open_channel("videos")
+                elif key == "l":
+                    self.open_channel("playlists")
+                elif key == "enter":
+                    self.sel = max(0, self.items.index(self.info)) if self.info in self.items else self.sel
+                    self.info = None
+                    self.play()
                 continue
             if self.leader is not None:
                 if t == "esc":
@@ -947,6 +1128,10 @@ class App:
                 self.play()
             elif key == "o":
                 self.open_list()
+            elif key == "i":
+                self.open_info()
+            elif key == "c":
+                self.open_channel("videos")
             elif key == "H":
                 self.open_history()
             elif key == "P":
